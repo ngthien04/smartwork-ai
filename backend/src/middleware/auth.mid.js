@@ -17,4 +17,26 @@ const authMid = (req, res, next) => {
   }
 };
 
+const generateTokenResponse = (user) => {
+  const token = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      isAdmin: !!user.isAdmin,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '15d' }
+  );
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    address: user.address,
+    isAdmin: !!user.isAdmin,
+    avatarUrl: user.avatarUrl,
+    token,
+  };
+};
+
 export default authMid;
