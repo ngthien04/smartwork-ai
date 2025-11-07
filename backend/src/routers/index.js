@@ -14,6 +14,8 @@ import inviteRouter from './invite.router.js';
 import aiInsightRouter from './aiInsight.router.js';
 import integrationRouter from './integration.router.js';
 import attachmentRouter from './attachment.router.js';
+import activityRouter from './activity.router.js';
+import aiRouter from './ai.router.js';
 
 
 const api = Router();
@@ -32,5 +34,7 @@ api.use('/invites', inviteRouter);
 api.use('/ai-insights', aiInsightRouter);
 api.use('/integrations', integrationRouter);
 api.use('/attachments', attachmentRouter);
+api.use('/activities', activityRouter);
+api.use('/ai', aiRouter);
 
 export default api;
