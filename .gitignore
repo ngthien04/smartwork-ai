@@ -1,0 +1,29 @@
+/.DS_Store
+
+# Ignore node_modules in both backend and frontend
+backend/node_modules/
+frontend/node_modules/
+
+# Ignore environment files (for sensitive data)
+*.env
+
+# Ignore log files
+*.log
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore build folders or output
+backend/build/
+frontend/build/
+
+# Ignore npm debug files
+npm-debug.log*
+
+# Ignore IDE-specific files
+.vscode/
+.idea/
+
+# Ignore coverage directory for testing frameworks
+coverage/

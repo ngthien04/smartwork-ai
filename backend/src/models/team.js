@@ -11,10 +11,10 @@ const TeamSchema = new Schema(
       index: true,
     },
     description: String,
-    owners: [{ type: Schema.Types.ObjectId, ref: "user", index: true }],
+    owners: [{ type: Schema.Types.ObjectId, ref: "user"}],
     members: [
       {
-        user: { type: Schema.Types.ObjectId, ref: "user", index: true },
+        user: { type: Schema.Types.ObjectId, ref: "user"},
         role: {
           type: String,
           enum: ["owner", "admin", "member", "guest"],

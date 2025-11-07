@@ -5,8 +5,8 @@ import { OAuth2Client } from 'google-auth-library';
 
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 import { UserModel } from '../models/User.js';
-import authMid from '../middlewares/auth.mid.js';
-import adminMid from '../middlewares/admin.mid.js';
+import authMid from '../middleware/auth.mid.js';
+import adminMid from '../middleware/admin.mid.js';
 
 const handler =
   (fn) =>

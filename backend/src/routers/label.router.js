@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 
-import authMid from '../middlewares/auth.mid.js';
-import adminMid from '../middlewares/admin.mid.js';
+import authMid from '../middleware/auth.mid.js';
+import adminMid from '../middleware/admin.mid.js';
 import { BAD_REQUEST } from '../constants/httpStatus.js';
 
 import { LabelModel } from '../models/label.js';
@@ -18,10 +18,8 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   } catch {}
 }
 
-// ------------------------------------------------------------
 // GET /api/labels
 // Query: team (bắt buộc), q (search by name), page, limit, sort
-// ------------------------------------------------------------
 router.get(
   '/',
   authMid,
@@ -49,9 +47,7 @@ router.get(
   })
 );
 
-// ------------------------------------------------------------
 // GET /api/labels/:labelId
-// ------------------------------------------------------------
 router.get(
   '/:labelId',
   authMid,
@@ -63,10 +59,8 @@ router.get(
   })
 );
 
-// ------------------------------------------------------------
 // POST /api/labels  (admin)
 // body: { team, name, color? }
-// ------------------------------------------------------------
 router.post(
   '/',
   adminMid,
@@ -95,10 +89,8 @@ router.post(
   })
 );
 
-// ------------------------------------------------------------
 // PUT /api/labels/:labelId  (admin)
 // body: { name?, color? }
-// ------------------------------------------------------------
 router.put(
   '/:labelId',
   adminMid,
@@ -136,11 +128,9 @@ router.put(
   })
 );
 
-// ------------------------------------------------------------
 // DELETE /api/labels/:labelId  (admin)
 // - Xoá nhãn: KHÔNG xoá khỏi task ở đây để an toàn (tuỳ policy).
 //   Bạn có thể viết thêm job gỡ label khỏi Task nếu cần.
-// ------------------------------------------------------------
 router.delete(
   '/:labelId',
   adminMid,

@@ -1,4 +1,4 @@
-export { UserModel } from './user.js';
+export { UserModel } from './users.js';
 export { TeamModel } from './team.js';
 export { ProjectModel } from './project.js';
 export { SprintModel } from './sprint.js';
@@ -9,7 +9,7 @@ export { CommentModel } from './comment.js';
 export { AttachmentModel } from './attachment.js';
 export { ActivityModel } from './activity.js';
 export { NotificationModel } from './notification.js';
-export { AIInsightModel } from './AIInsight.js';
+export { AIInsightModel } from './aIInsight.js';
 export { ReminderModel } from './reminder.js';
 export { IntegrationModel } from './integration.js';
 export { InviteModel } from './invite.js';
