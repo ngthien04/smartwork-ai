@@ -12,10 +12,11 @@ import userRouter from './users.router.js';
 import commentRouter from './comment.router.js';
 import inviteRouter from './invite.router.js';
 import aiInsightRouter from './aiInsight.router.js';
+import integrationRouter from './integration.router.js';
+import attachmentRouter from './attachment.router.js';
 
 
 const api = Router();
-
 
 api.use('/sprints', sprintRouter);
 api.use('/subtasks', subtaskRouter);
@@ -29,5 +30,7 @@ api.use('/users', userRouter);
 api.use('/comments', commentRouter);
 api.use('/invites', inviteRouter);
 api.use('/ai-insights', aiInsightRouter);
+api.use('/integrations', integrationRouter);
+api.use('/attachments', attachmentRouter);
 
 export default api;
