@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import authMid from '../middlewares/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { CommentModel } from '../models/comment.js';

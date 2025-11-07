@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import authMid from '../middlewares/auth.mid.js';
-import adminMid from '../middlewares/admin.mid.js'; 
+import authMid from '../middleware/auth.mid.js';
+import adminMid from '../middleware/admin.mid.js'; 
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { TeamModel } from '../models/team.js';
@@ -322,9 +322,7 @@ router.delete(
   })
 );
 
-// POST /api/teams/:teamId/invites  (owner/admin)
-// body: { email, role='member', expiresInDays=7 }
-// -> tạo invite; (tuỳ chọn) gửi email mời
+
 router.post(
   '/:teamId/invites',
   authMid,
@@ -350,8 +348,6 @@ router.post(
       expiresAt,
     });
 
-    // TODO: nếu bạn có mail helper riêng cho invite, gọi ở đây
-    // await sendTeamInviteEmail({ to: invite.email, teamName: team.name, inviteUrl: `${APP_URL}/invite/${token}` });
 
     await recordActivity({
       team: team._id,
@@ -366,9 +362,6 @@ router.post(
   })
 );
 
-// POST /api/teams/invites/accept
-// body: { token }
-// -> thêm user hiện tại vào team với role từ invite
 router.post(
   '/invites/accept',
   authMid,

@@ -10,7 +10,7 @@ const AttachmentSchema = new Schema(
     storage: {
       provider: {
         type: String,
-        enum: ["local", "s3", "gcs", "azure"],
+        enum: ['local', 's3', 'gcs', 'azure', 'cloudinary'],
         default: "local",
       },
       key: String, 

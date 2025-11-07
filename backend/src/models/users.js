@@ -33,7 +33,7 @@ const UserSchema = new Schema(
     },
     roles: [
       {
-        team: { type: Schema.Types.ObjectId, ref: "team", index: true },
+        team: { type: Schema.Types.ObjectId, ref: "team"},
         role: {
           type: String,
           enum: ["owner", "admin", "member", "guest"],

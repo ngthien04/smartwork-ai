@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import authMid from '../middlewares/auth.mid.js';
-import adminMid from '../middlewares/admin.mid.js';
+import authMid from '../middleware/auth.mid.js';
+import adminMid from '../middleware/admin.mid.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { TaskModel } from '../models/task.js';

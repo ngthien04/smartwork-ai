@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 
-import authMid from '../middlewares/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { TeamModel } from '../models/team.js';
@@ -27,8 +27,7 @@ function isOwnerOrAdmin(teamDoc, userId) {
   return r === 'owner' || r === 'admin';
 }
 
-// GET /api/projects?team=<teamId>&q=&isArchived=&page=&limit=&sort=
-// Liệt kê project của 1 team (chỉ member của team được xem)
+
 router.get(
   '/',
   authMid,
@@ -61,7 +60,6 @@ router.get(
   })
 );
 
-// GET /api/projects/:projectId   (chỉ member team của project)
 router.get(
   '/:projectId',
   authMid,
@@ -119,8 +117,6 @@ router.post(
   })
 );
 
-// PUT /api/projects/:projectId   (owner/admin)
-// body: { name?, key?, description?, lead?, isArchived? }
 router.put(
   '/:projectId',
   authMid,
@@ -166,8 +162,6 @@ router.put(
   })
 );
 
-// PUT /api/projects/:projectId/archive   (owner/admin)
-// body: { isArchived: boolean }  — lối tắt cho archive/restore
 router.put(
   '/:projectId/archive',
   authMid,
@@ -230,8 +224,6 @@ router.delete(
   })
 );
 
-// GET /api/projects/:projectId/stats/overview
-// Thống kê nhanh: số task theo status, số task quá hạn
 router.get(
   '/:projectId/stats/overview',
   authMid,
