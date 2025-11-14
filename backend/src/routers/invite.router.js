@@ -6,7 +6,7 @@ import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { InviteModel } from '../models/invite.js';
 import { TeamModel } from '../models/team.js';
-import { UserModel } from '../models/user.js';
+import { UserModel } from '../models/users.js';
 import { ActivityModel } from '../models/activity.js';
 
 import { sendEmail } from '../helpers/mail.helper.js';
@@ -25,13 +25,13 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
 function memberRole(teamDoc, userId) {
   return teamDoc.members?.find((m) => String(m.user) === String(userId))?.role || null;
 }
-function isOwnerOrAdmin(teamDoc, userId) {
+function isleaderOrAdmin(teamDoc, userId) {
   const r = memberRole(teamDoc, userId);
-  return r === 'owner' || r === 'admin';
+  return r === 'leader' || r === 'admin';
 }
 
 // GET /api/invites?team=<teamId>&page=&limit=
-// Liệt kê invites của 1 team (chỉ member xem được; tạo/xoá cần owner/admin)
+// Liệt kê invites của 1 team (chỉ member xem được; tạo/xoá cần leader/admin)
 router.get(
   '/',
   authMid,
@@ -81,7 +81,7 @@ router.get(
   })
 );
 
-// POST /api/invites  (owner/admin)
+// POST /api/invites  (leader/admin)
 // body: { team, email, role='member', expiresInDays=7, sendEmail=true }
 router.post(
   '/',
@@ -92,7 +92,7 @@ router.post(
 
     const teamDoc = await TeamModel.findById(team);
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(teamDoc, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới mời thành viên');
+    if (!isleaderOrAdmin(teamDoc, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới mời thành viên');
 
     const normEmail = String(email).toLowerCase().trim();
 
@@ -222,7 +222,7 @@ router.post(
   })
 );
 
-// POST /api/invites/:inviteId/resend  (owner/admin)
+// POST /api/invites/:inviteId/resend  (leader/admin)
 // Gửi lại email mời (giữ token hiện tại)
 router.post(
   '/:inviteId/resend',
@@ -234,7 +234,7 @@ router.post(
 
     const team = await TeamModel.findById(invite.team);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(team, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ owner/admin');
+    if (!isleaderOrAdmin(team, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ leader/admin');
 
     try {
       const appUrl = process.env.APP_URL?.replace(/\/$/, '') || 'http://localhost:3000';
@@ -278,7 +278,7 @@ router.delete(
 
     const team = await TeamModel.findById(invite.team);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(team, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ owner/admin');
+    if (!isleaderOrAdmin(team, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ leader/admin');
 
     await InviteModel.deleteOne({ _id: invite._id });
 

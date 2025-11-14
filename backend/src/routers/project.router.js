@@ -22,9 +22,9 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
 function memberRole(teamDoc, userId) {
   return teamDoc.members?.find((m) => String(m.user) === String(userId))?.role || null;
 }
-function isOwnerOrAdmin(teamDoc, userId) {
+function isleaderOrAdmin(teamDoc, userId) {
   const r = memberRole(teamDoc, userId);
-  return r === 'owner' || r === 'admin';
+  return r === 'leader' || r === 'admin';
 }
 
 
@@ -76,7 +76,7 @@ router.get(
   })
 );
 
-// POST /api/projects   (owner/admin)
+// POST /api/projects   (leader/admin)
 // body: { team, name, key, description?, lead? }
 router.post(
   '/',
@@ -87,7 +87,7 @@ router.post(
 
     const teamDoc = await TeamModel.findById(team);
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(teamDoc, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới tạo project');
+    if (!isleaderOrAdmin(teamDoc, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới tạo project');
 
     try {
       const proj = await ProjectModel.create({
@@ -126,8 +126,8 @@ router.put(
     if (!proj || proj.isDeleted) return res.status(404).send('Project không tồn tại');
 
     const teamDoc = await TeamModel.findById(proj.team);
-    if (!isOwnerOrAdmin(teamDoc, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới cập nhật project');
+    if (!isleaderOrAdmin(teamDoc, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới cập nhật project');
     }
 
     const { name, key, description, lead, isArchived } = req.body || {};
@@ -173,8 +173,8 @@ router.put(
     if (!proj || proj.isDeleted) return res.status(404).send('Project không tồn tại');
 
     const teamDoc = await TeamModel.findById(proj.team);
-    if (!isOwnerOrAdmin(teamDoc, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới archive project');
+    if (!isleaderOrAdmin(teamDoc, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới archive project');
     }
 
     proj.isArchived = !!isArchived;
@@ -193,7 +193,7 @@ router.put(
   })
 );
 
-// DELETE /api/projects/:projectId   (owner/admin) — soft delete
+// DELETE /api/projects/:projectId   (leader/admin) — soft delete
 router.delete(
   '/:projectId',
   authMid,
@@ -203,8 +203,8 @@ router.delete(
     if (!proj) return res.status(404).send('Project không tồn tại');
 
     const teamDoc = await TeamModel.findById(proj.team);
-    if (!isOwnerOrAdmin(teamDoc, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới xoá project');
+    if (!isleaderOrAdmin(teamDoc, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới xoá project');
     }
 
     proj.isDeleted = true;

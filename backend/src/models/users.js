@@ -36,7 +36,7 @@ const UserSchema = new Schema(
         team: { type: Schema.Types.ObjectId, ref: "team"},
         role: {
           type: String,
-          enum: ["owner", "admin", "member", "guest"],
+          enum: ["admin", "member", "leader"],
           default: "member",
         },
       },

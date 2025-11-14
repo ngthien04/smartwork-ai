@@ -82,8 +82,8 @@ router.post(
     const { task, user, fireAt, method = 'web' } = req.body || {};
     if (!fireAt) return res.status(BAD_REQUEST).send('Thiếu fireAt');
 
-    const ownerId = user ? toId(user) : toId(req.user.id);
-    if (user && !req.user.isAdmin && String(ownerId) !== String(req.user.id)) {
+    const leaderId = user ? toId(user) : toId(req.user.id);
+    if (user && !req.user.isAdmin && String(leaderId) !== String(req.user.id)) {
       return res.status(UNAUTHORIZED).send('Không được tạo nhắc việc cho người khác');
     }
 
@@ -93,7 +93,7 @@ router.post(
     }
 
     const doc = await ReminderModel.create({
-      user: ownerId,
+      user: leaderId,
       task: task ? toId(task) : undefined,
       fireAt: new Date(fireAt),
       method,

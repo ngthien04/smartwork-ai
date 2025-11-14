@@ -12,7 +12,7 @@ const InviteSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ["owner", "admin", "member", "guest"],
+      enum: ["leader", "admin", "member"],
       default: "member",
     },
     token: { type: String, required: true, unique: true },

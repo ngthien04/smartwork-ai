@@ -1,7 +1,7 @@
 // src/routers/aiInsight.router.js
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import authMid from '../middlewares/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import { LabelModel } from '../models/index.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
@@ -30,7 +30,7 @@ async function userHasAnyRoleInTeam(userId, teamId) {
 async function userCanManageTeam(userId, teamId) {
   const exists = await UserModel.exists({
     _id: userId,
-    roles: { $elemMatch: { team: toId(teamId), role: { $in: ['owner', 'admin'] } } },
+    roles: { $elemMatch: { team: toId(teamId), role: { $in: ['leader', 'admin'] } } },
   });
   return !!exists;
 }

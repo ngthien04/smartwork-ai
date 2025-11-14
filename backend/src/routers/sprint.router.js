@@ -38,7 +38,7 @@ async function canManageProject(user, project) {
   if (isLead) return true;
   const canTeamManage = await UserModel.exists({
     _id: user.id,
-    roles: { $elemMatch: { team: project.team, role: { $in: ['owner', 'admin'] } } },
+    roles: { $elemMatch: { team: project.team, role: { $in: ['leader', 'admin'] } } },
   });
   return !!canTeamManage;
 }
