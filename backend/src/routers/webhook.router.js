@@ -27,7 +27,7 @@ async function canManageTeam(user, teamId) {
   if (!teamId) return false;
   const found = await UserModel.exists({
     _id: user.id,
-    roles: { $elemMatch: { team: toId(teamId), role: { $in: ['owner', 'admin'] } } },
+    roles: { $elemMatch: { team: toId(teamId), role: { $in: ['leader', 'admin'] } } },
   });
   return !!found;
 }

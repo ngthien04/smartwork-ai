@@ -1,7 +1,7 @@
 // src/routers/activity.router.js
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import authMid from '../middlewares/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { ActivityModel, UserModel } from '../models/index.js';
@@ -28,7 +28,7 @@ async function canManageTeam(user, teamId) {
   if (user?.isAdmin) return true;
   const ok = await UserModel.exists({
     _id: user.id,
-    roles: { $elemMatch: { team: toId(teamId), role: { $in: ['owner', 'admin'] } } },
+    roles: { $elemMatch: { team: toId(teamId), role: { $in: ['leader', 'admin'] } } },
   });
   return !!ok;
 }
@@ -117,7 +117,7 @@ router.get(
 
 /**
  * DELETE /api/activities/:id
- * - chỉ admin hoặc team owner/admin
+ * - chỉ admin hoặc team leader/admin
  */
 router.delete(
   '/:id',

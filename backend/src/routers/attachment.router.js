@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import multer from 'multer';
-import authMid from '../middlewares/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { AttachmentModel, TaskModel, ActivityModel, UserModel } from '../models/index.js';

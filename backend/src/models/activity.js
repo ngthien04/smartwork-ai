@@ -4,14 +4,14 @@ const ActivitySchema = new Schema(
   {
     team: { type: Schema.Types.ObjectId, ref: "team", index: true },
     actor: { type: Schema.Types.ObjectId, ref: "user", index: true },
-    verb: { type: String, required: true }, // created, updated, commented, moved, etc.
+    verb: { type: String, required: true }, 
     targetType: {
       type: String,
       enum: ["task", "project", "comment", "sprint", "label"],
       required: true,
     },
     targetId: { type: Schema.Types.ObjectId, required: true, index: true },
-    metadata: Schema.Types.Mixed, // diff thay đổi, trường cụ thể
+    metadata: Schema.Types.Mixed, 
   },
   { timestamps: true }
 );

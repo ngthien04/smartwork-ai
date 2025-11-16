@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import authMid from '../middlewares/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import mongoose from 'mongoose';
 
 import { suggestChecklistAndEstimate } from '../ai/suggestTask.js';

@@ -29,9 +29,9 @@ function ensureMemberRole(teamDoc, userId) {
   return found?.role || null;
 }
 
-function isOwnerOrAdmin(teamDoc, userId) {
+function isleaderOrAdmin(teamDoc, userId) {
   const role = ensureMemberRole(teamDoc, userId);
-  return role === 'owner' || role === 'admin';
+  return role === 'leader' || role === 'admin';
 }
 
 // GET /api/teams  -> danh sách team của current user
@@ -74,7 +74,7 @@ router.get(
   })
 );
 
-// POST /api/teams -> tạo team mới (current user = owner)
+// POST /api/teams -> tạo team mới (current user = leader)
 // body: { name, slug, description? }
 router.post(
   '/',
@@ -88,14 +88,14 @@ router.post(
       name: name.trim(),
       slug: String(slug).toLowerCase().trim(),
       description,
-      owners: [req.user.id],
-      members: [{ user: req.user.id, role: 'owner', joinedAt: new Date() }],
+      leaders: [req.user.id],
+      members: [{ user: req.user.id, role: 'leader', joinedAt: new Date() }],
       settings: {},
     });
 
     // thêm role vào user
     await UserModel.findByIdAndUpdate(req.user.id, {
-      $addToSet: { roles: { team: team._id, role: 'owner' } },
+      $addToSet: { roles: { team: team._id, role: 'leader' } },
     });
 
     await recordActivity({
@@ -111,7 +111,7 @@ router.post(
   })
 );
 
-// PUT /api/teams/:teamId  -> update info (owner/admin)
+// PUT /api/teams/:teamId  -> update info (leader/admin)
 // body: { name?, description?, settings?{...} }
 router.put(
   '/:teamId',
@@ -121,8 +121,8 @@ router.put(
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    if (!isOwnerOrAdmin(team, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới được cập nhật team');
+    if (!isleaderOrAdmin(team, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới được cập nhật team');
     }
 
     const { name, description, settings } = req.body || {};
@@ -147,7 +147,7 @@ router.put(
   })
 );
 
-// PUT /api/teams/:teamId/archive  (owner/admin)
+// PUT /api/teams/:teamId/archive  (leader/admin)
 // body: { isArchived: boolean }
 router.put(
   '/:teamId/archive',
@@ -158,8 +158,8 @@ router.put(
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    if (!isOwnerOrAdmin(team, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới được archive team');
+    if (!isleaderOrAdmin(team, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới được archive team');
     }
 
     team.isArchived = !!isArchived;
@@ -178,7 +178,7 @@ router.put(
   })
 );
 
-// DELETE /api/teams/:teamId  -> soft delete (owner)
+// DELETE /api/teams/:teamId  -> soft delete (leader)
 router.delete(
   '/:teamId',
   authMid,
@@ -188,8 +188,8 @@ router.delete(
     if (!team) return res.status(404).send('Team không tồn tại');
 
     const role = ensureMemberRole(team, req.user.id);
-    if (role !== 'owner') {
-      return res.status(UNAUTHORIZED).send('Chỉ owner được xoá team');
+    if (role !== 'leader') {
+      return res.status(UNAUTHORIZED).send('Chỉ leader được xoá team');
     }
 
     team.isDeleted = true;
@@ -228,7 +228,7 @@ router.get(
   })
 );
 
-// POST /api/teams/:teamId/members  (owner/admin)
+// POST /api/teams/:teamId/members  (leader/admin)
 // body: { userId, role = 'member' }
 router.post(
   '/:teamId/members',
@@ -239,8 +239,8 @@ router.post(
 
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(team, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới thêm thành viên');
+    if (!isleaderOrAdmin(team, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới thêm thành viên');
     }
     if (!userId) return res.status(BAD_REQUEST).send('Thiếu userId');
 
@@ -286,7 +286,7 @@ router.post(
   })
 );
 
-// DELETE /api/teams/:teamId/members/:userId  (owner/admin)
+// DELETE /api/teams/:teamId/members/:userId  (leader/admin)
 // - xoá thành viên khỏi team + sync user.roles
 router.delete(
   '/:teamId/members/:userId',
@@ -295,15 +295,15 @@ router.delete(
     const { teamId, userId } = req.params;
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(team, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới xoá thành viên');
+    if (!isleaderOrAdmin(team, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới xoá thành viên');
     }
 
-    // không cho xoá chính owner cuối cùng
+    // không cho xoá chính leader cuối cùng
     const targetRole = ensureMemberRole(team, userId);
-    if (targetRole === 'owner') {
-      const ownerCount = team.members.filter((m) => m.role === 'owner').length;
-      if (ownerCount <= 1) return res.status(BAD_REQUEST).send('Không thể xoá owner cuối cùng');
+    if (targetRole === 'leader') {
+      const leaderCount = team.members.filter((m) => m.role === 'leader').length;
+      if (leaderCount <= 1) return res.status(BAD_REQUEST).send('Không thể xoá leader cuối cùng');
     }
 
     await TeamModel.updateOne({ _id: team._id }, { $pull: { members: { user: toId(userId) } } });
@@ -333,8 +333,8 @@ router.post(
 
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isOwnerOrAdmin(team, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ owner/admin mới mời thành viên');
+    if (!isleaderOrAdmin(team, req.user.id)) {
+      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới mời thành viên');
     }
 
     const token = Math.random().toString(36).slice(2) + Date.now().toString(36);

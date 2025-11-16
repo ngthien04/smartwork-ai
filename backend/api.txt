@@ -1,0 +1,34 @@
+##Activity router
+/**
+ * GET /api/activities
+ * Query: team?, targetType?, targetId?, actor?, verb?, from?, to?, page?, limit?
+ */
+
+/**
+ * GET /api/activities/:id
+ */
+
+/**
+ * DELETE /api/activities/:id
+ * - chỉ admin hoặc team leader/admin
+ */
+
+ ##Acttachment router
+ /**
+ * GET /api/attachments?task=&page=&limit=
+ */
+
+ /**
+ * GET /api/attachments/:id
+ */
+
+ /**
+ * POST /api/attachments  (upload 1 file)
+ * form-data: file=<binary> , task?=<taskId>
+ */
+
+/**
+ * DELETE /api/attachments/:id  (xoá DB + Cloudinary)
+ */
+
+##

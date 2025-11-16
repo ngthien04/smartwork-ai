@@ -16,6 +16,7 @@ import integrationRouter from './integration.router.js';
 import attachmentRouter from './attachment.router.js';
 import activityRouter from './activity.router.js';
 import aiRouter from './ai.router.js';
+import notificationRouter from './notification.router.js';
 
 
 const api = Router();
@@ -36,5 +37,6 @@ api.use('/integrations', integrationRouter);
 api.use('/attachments', attachmentRouter);
 api.use('/activities', activityRouter);
 api.use('/ai', aiRouter);
+api.use('/notifications', notificationRouter);
 
 export default api;
