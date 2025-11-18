@@ -1,0 +1,21 @@
+// src/routes/path.ts
+export const ROUTES = {
+  HOME: '/',
+  DASHBOARD: '/dashboard',
+  ADMIN: '/admin',
+  PROJECTS: '/projects',
+  PROJECT_DETAIL: '/projects/:projectId',
+  TASKS: '/tasks',
+  TASK_DETAIL: '/tasks/:taskId',
+  NOTES: '/notes',
+  ASSISTANT: '/assistant',
+  CALENDAR: '/calendar',
+  SETTINGS: '/settings',
+  TEAMS: '/teams',
+  TEAM_MEMBERS: '/teams/:teamId/members',
+  LABELS: '/admin/labels',
+  AUTH: '/auth',
+  LOGIN: '/auth/login',
+  REGISTER: '/auth/register',
+  RESET_PASSWORD: '/auth/reset-password',
+} as const;

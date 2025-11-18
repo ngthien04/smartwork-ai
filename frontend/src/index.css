@@ -2,8 +2,9 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "flowbite-react/plugin/tailwindcss";
-@source "../.flowbite-react/class-list.json";
+@plugin "flowbite/plugin";
+@source "../node_modules/flowbite-react/lib/esm/**/*.js";
+@source "../node_modules/flowbite/**/*.js";
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);

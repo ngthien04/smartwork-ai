@@ -10,7 +10,7 @@ import bcrypt from 'bcrypt';
   console.log('✅ Connected to MongoDB');
 
   // Xoá user/team cũ nếu trùng email
-  await UserModel.deleteOne({ email: 'admin@example.com' });
+  await UserModel.deleteOne({ email: 'admin@gmail.com' });
 
   // Tạo team mẫu (nếu chưa có)
   let team = await TeamModel.findOne({ name: 'SmartWork Dev Team' });

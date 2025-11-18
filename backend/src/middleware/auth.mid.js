@@ -28,10 +28,14 @@ const authMid = (req, res, next) => {
 const generateTokenResponse = (user) => {
   REQUIRE_SECRET();
 
+  const hasAdminRole =
+    Array.isArray(user.roles) && user.roles.some((role) => role?.role === 'admin');
+  const isAdmin = typeof user.isAdmin === 'boolean' ? user.isAdmin : hasAdminRole;
+
   const payload = {
     id: user.id || String(user._id), // ưu tiên virtual id, fallback _id
     email: user.email,
-    isAdmin: !!user.isAdmin,
+    isAdmin,
   };
 
   const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15d' });
@@ -41,7 +45,7 @@ const generateTokenResponse = (user) => {
     email: user.email,
     name: user.name,
     // address: user.address, // ⛔ schema không có, bỏ hoặc thêm vào schema
-    isAdmin: !!user.isAdmin,
+    isAdmin,
     avatarUrl: user.avatarUrl,
     token,
   };
