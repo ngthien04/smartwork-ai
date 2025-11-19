@@ -184,7 +184,7 @@ export default function CalendarPage() {
             <Calendar
               value={selectedDate}
               onChange={setSelectedDate}
-              dateCellRender={dateCellRender}
+              cellRender={dateCellRender}
               className="h-full"
             />
           </Card>

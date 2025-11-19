@@ -5,7 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 import { UserModel } from '../models/users.js';
-import authMid, { generateTokenResponse } from '../middleware/auth.mid.js';
+import authMid from '../middleware/auth.mid.js';
 import adminMid from '../middleware/admin.mid.js';
 
 const handler =
@@ -45,7 +45,7 @@ router.post(
 router.post(
   '/register',
   handler(async (req, res) => {
-    const { name, email, password, address } = req.body || {};
+    const { name, email, password } = req.body || {};
     if (!name || !email || !password) {
       return res.status(BAD_REQUEST).send('Thiếu name/email/password');
     }
@@ -57,12 +57,17 @@ router.post(
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+
     const user = await UserModel.create({
       name,
       email: emailNorm,
       passwordHash,
-      address: address || '',
-      isAdmin: false, 
+      roles: [
+        {
+          team: null,       
+          role: 'member',   
+        },
+      ],
     });
 
     return res.send(generateTokenResponse(user));
@@ -90,11 +95,10 @@ router.put(
   '/updateProfile',
   authMid,
   handler(async (req, res) => {
-    const { name, address, avatarUrl, preferences } = req.body || {};
+    const { name, avatarUrl, preferences } = req.body || {};
 
     const updates = {};
     if (typeof name !== 'undefined') updates.name = name;
-    if (typeof address !== 'undefined') updates.address = address;
     if (typeof avatarUrl !== 'undefined') updates.avatarUrl = avatarUrl;
     if (preferences && typeof preferences === 'object') updates.preferences = preferences;
 
@@ -136,14 +140,14 @@ router.put(
   '/update',
   adminMid,
   handler(async (req, res) => {
-    const { id, name, email, address, isAdmin } = req.body || {};
+    const { id, name, email, avatarUrl, preferences } = req.body || {};
     if (!id) return res.status(BAD_REQUEST).send('Thiếu id');
 
     const updates = {};
     if (typeof name !== 'undefined') updates.name = name;
     if (typeof email !== 'undefined') updates.email = String(email).toLowerCase().trim();
-    if (typeof address !== 'undefined') updates.address = address;
-    if (typeof isAdmin !== 'undefined') updates.isAdmin = !!isAdmin;
+    if (typeof avatarUrl !== 'undefined') updates.avatarUrl = avatarUrl;
+    if (preferences && typeof preferences === 'object') updates.preferences = preferences;
 
     await UserModel.findByIdAndUpdate(id, updates);
     return res.send();
@@ -176,7 +180,6 @@ router.post(
           email: emailNorm,
           passwordHash: undefined, 
           avatarUrl: picture,
-          address: '',
           authProviders: [{ provider: 'google', providerId: payload.sub }],
         });
       } else if (!user.avatarUrl && picture) {
@@ -197,5 +200,39 @@ router.get('/me', authMid, handler(async (req, res) => {
   if (!user) return res.status(404).send('User không tồn tại');
   return res.send(user);
 }));
+
+function generateTokenResponse(user) {
+  // user.roles có dạng [{ team, role }]
+  const roles = user.roles || [];
+  const isAdmin = roles.some((r) => r.role === 'admin');
+
+  const token = jwt.sign(
+    {
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      isAdmin,        // <-- dùng cho adminMid / mấy router khác
+      roles,          // (optional) nếu FE cần biết role theo team
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  return {
+    token,
+    user: {
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      preferences: user.preferences,
+      roles,
+      isAdmin,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+  };
+}
+
 
 export default router;

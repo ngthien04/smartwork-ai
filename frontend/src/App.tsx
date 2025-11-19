@@ -1,7 +1,13 @@
-import useRouterElements from '@/routes/elements';
+// src/App.tsx
+import { AuthProvider } from "@/contexts/AuthContext";
+import useRouterElements from "@/routes/elements";
 
 function App() {
-  return useRouterElements();
+  return (
+    <AuthProvider>
+      {useRouterElements()}
+    </AuthProvider>
+  );
 }
 
 export default App;

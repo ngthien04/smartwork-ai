@@ -10,6 +10,7 @@ import { CommentModel } from '../models/comment.js';
 import { LabelModel } from '../models/label.js';
 import { AttachmentModel } from '../models/attachment.js';
 import { ActivityModel } from '../models/activity.js';
+import { UserModel } from '../models/users.js';
 
 import multer from 'multer';
 import { configCloudinary } from '../config/cloudinary.config.js'; 
@@ -65,7 +66,6 @@ router.get(
   authMid,
   handler(async (req, res) => {
     const {
-      team,
       project,
       sprint,
       assignee,
@@ -74,13 +74,25 @@ router.get(
       q,
       page = 1,
       limit = 20,
+      size,
       sort = '-createdAt',
       includeDeleted = 'false',
+      team: teamQuery,
     } = req.query;
 
-    if (!team) return res.status(BAD_REQUEST).send('Missing team');
+    let team = teamQuery;
 
-    const filter = { team: toObjectId(team) };
+    if (!team) {
+      const user = await UserModel.findById(req.user.id, { roles: 1 }).lean();
+      const firstTeam = user?.roles?.[0]?.team;
+      if (firstTeam) {
+        team = String(firstTeam);
+      }
+    }
+
+    // ---- build filter ----
+    const filter = {};
+    if (team) filter.team = toObjectId(team);
     if (project) filter.project = toObjectId(project);
     if (sprint) filter.sprint = toObjectId(sprint);
     if (assignee) filter.assignees = toObjectId(assignee);
@@ -92,19 +104,19 @@ router.get(
       filter.$text = { $search: q };
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    // ---- paging: ưu tiên size nếu có ----
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(size || limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
+
     const [items, total] = await Promise.all([
-      TaskModel.find(filter)
-        .sort(sort)
-        .skip(skip)
-        .limit(Number(limit))
-        .lean(),
+      TaskModel.find(filter).sort(sort).skip(skip).limit(limitNum).lean(),
       TaskModel.countDocuments(filter),
     ]);
 
     res.send({
-      page: Number(page),
-      limit: Number(limit),
+      page: pageNum,
+      limit: limitNum,
       total,
       items,
     });

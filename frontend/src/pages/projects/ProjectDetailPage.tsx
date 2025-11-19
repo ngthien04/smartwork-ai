@@ -103,7 +103,7 @@ export default function ProjectDetailPage() {
       labels: values.labels,
       tags: values.tags,
       dueDate: values.dueDate?.toISOString?.(),
-      checklist: checklist.map((item) => ({
+      checklist: checklist.map((item: any) => ({
         content: item,
         done: false,
       })),

@@ -9,8 +9,13 @@ const app = express();
 
 app.use(express.json({ limit: '2mb' }));
 
-const origins = (process.env.CORS_ORIGIN || '*').split(',').map(s => s.trim());
-app.use(cors({ credentials: true, origin: origins }));
+const origins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+
+app.use(cors({
+  origin: origins.length ? origins : '*',
+  credentials: true,
+}));
+
 
 app.get('/healthz', (_req, res) => {
   res.json({
