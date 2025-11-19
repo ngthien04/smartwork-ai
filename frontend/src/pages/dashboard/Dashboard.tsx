@@ -1,7 +1,6 @@
 // src/pages/dashboard/Dashboard.tsx
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -19,10 +18,53 @@ import dayjs from 'dayjs';
 import { taskServices } from '@/services/taskServices';
 import { calendarServices } from '@/services/calendarServices';
 import { noteServices } from '@/services/noteServices';
+import inviteService, { type Invite } from '@/services/inviteService';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Space, message } from 'antd';
+
 
 export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+
+  const queryClient = useQueryClient();
+
+  const { data: myInvitesRes } = useQuery({
+    queryKey: ['my-invites'],
+    queryFn: () => inviteService.listMine(),
+  });
+
+  const myInvites = myInvitesRes?.data?.items || [];
+
+  const acceptMutation = useMutation({
+    mutationFn: (token: string) => inviteService.accept(token),
+    onSuccess: (res) => {
+      message.success('Đã tham gia team thành công');
+      queryClient.invalidateQueries({ queryKey: ['my-invites'] });
+      // nếu bạn có query team/list thì invalidate luôn cho đồng bộ:
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      // nếu backend trả teamId thì có thể navigate sang /teams/:id tại đây luôn
+      const teamId = (res.data as any)?.team?._id || (res.data as any)?.teamId;
+      if (teamId) {
+        navigate(`/teams/${teamId}`);
+      }
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data || 'Chấp nhận lời mời thất bại');
+    },
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: (inviteId: string) => inviteService.cancel(inviteId),
+    onSuccess: () => {
+      message.info('Đã từ chối lời mời');
+      queryClient.invalidateQueries({ queryKey: ['my-invites'] });
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data || 'Không từ chối được lời mời');
+    },
+  });
+
 
   const { data: tasksResponse } = useQuery({
     queryKey: ['dashboard', 'tasks'],
@@ -123,6 +165,53 @@ export default function Dashboard() {
         <p className="text-muted-foreground">Chào mừng bạn quay trở lại! Đây là tổng quan về công việc của bạn.</p>
       </div>
 
+      {myInvites.length > 0 && (
+        <div className="mb-4">
+          <Alert
+            type="info"
+            showIcon
+            message={`Bạn có ${myInvites.length} lời mời tham gia team`}
+            description={
+              <div>
+                {myInvites.map((inv) => (
+                  <div
+                    key={inv._id}
+                    className="flex items-center justify-between mb-2"
+                  >
+                    <div>
+                      Bạn được mời vào team{' '}
+                      <b>{typeof inv.team === 'string' ? inv.team : inv.team?.name || '—'}</b>{' '}
+                      với vai trò <b>{inv.role}</b>.
+                    </div>
+                    <Space>
+                      <Button
+                        type="primary"
+                        size="small"
+                        loading={acceptMutation.isPending  && acceptMutation.variables === inv.token}
+                        onClick={() => acceptMutation.mutate(inv.token)}
+                      >
+                        Chấp nhận
+                      </Button>
+
+                      <Button
+                        type="default"
+                        danger
+                        size="small"
+                        loading={declineMutation.isPending  && declineMutation.variables === inv._id}
+                        onClick={() => declineMutation.mutate(inv._id)}
+                      >
+                        Từ chối
+                      </Button>
+                    </Space>
+                  </div>
+                ))}
+              </div>
+            }
+          />
+        </div>
+      )}
+
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Quick Actions */}
         <div className="lg:col-span-2">
@@ -172,7 +261,7 @@ export default function Dashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{t('dashboard.recentTasks')}</CardTitle>
-              <Button variant="outline" onClick={() => navigate(ROUTES.TASKS)}>
+              <Button variant="outlined" onClick={() => navigate(ROUTES.TASKS)}>
                 Xem tất cả
               </Button>
             </CardHeader>
@@ -208,7 +297,7 @@ export default function Dashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{t('dashboard.upcomingEvents')}</CardTitle>
-              <Button variant="outline" onClick={() => navigate(ROUTES.CALENDAR)}>
+              <Button variant="outlined" onClick={() => navigate(ROUTES.CALENDAR)}>
                 Xem lịch
               </Button>
             </CardHeader>

@@ -1,11 +1,15 @@
 import { UNAUTHORIZED } from '../constants/httpStatus.js';
-import authMid from './auth.mid.js';
 
-const adminMid = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin) {
-    return res.status(UNAUTHORIZED).send('Admin access required');
+export default function adminMid(req, res, next) {
+  // authMid phải chạy trước => req.user đã có
+  if (!req.user) {
+    return res.status(UNAUTHORIZED).send('Unauthenticated');
   }
-  next();
-};
 
-export default [authMid, adminMid];
+  // Dùng flag isAdmin từ token (tính từ roles lúc login)
+  if (!req.user.isAdmin) {
+    return res.status(UNAUTHORIZED).send('Admin only');
+  }
+
+  next();
+}

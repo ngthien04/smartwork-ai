@@ -4,7 +4,7 @@ import type { Team } from '@/types/team';
 import type { User } from '@/types/user';
 import type { Label } from '@/types/task';
 
-export const DEFAULT_TEAM_ID = 'team-001';
+export const DEFAULT_TEAM_ID = '691c870b1dde51bd7186c97f';
 
 export const mockUsers: User[] = [
   {

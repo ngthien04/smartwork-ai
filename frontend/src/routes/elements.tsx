@@ -18,6 +18,7 @@ import TeamManagementPage from '@/pages/team/TeamManagementPage';
 import AuthPage from '@/pages/auth/AuthPage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 import AdminPage from '@/pages/admin/AdminPage';
+import AcceptInvitePage from '@/pages/invite/AcceptInvitePage';
 
 const LayoutWrapper = () => (
   <AppLayout>
@@ -45,6 +46,7 @@ export default function useRouterElements() {
             { path: ROUTES.SETTINGS, element: <SettingsPage /> },
             { path: ROUTES.TEAMS, element: <TeamManagementPage /> },
             { path: ROUTES.TEAM_MEMBERS, element: <TeamManagementPage /> },
+            { path: ROUTES.INVITE_ACCEPT, element: <AcceptInvitePage /> },
           ],
         },
       ],

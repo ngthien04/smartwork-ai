@@ -17,6 +17,8 @@ import attachmentRouter from './attachment.router.js';
 import activityRouter from './activity.router.js';
 import aiRouter from './ai.router.js';
 import notificationRouter from './notification.router.js';
+import noteRouter from './notes.router.js';
+import eventsRouter from './events.router.js';
 
 
 const api = Router();
@@ -38,5 +40,7 @@ api.use('/attachments', attachmentRouter);
 api.use('/activities', activityRouter);
 api.use('/ai', aiRouter);
 api.use('/notifications', notificationRouter);
+api.use('/notes', noteRouter);
+api.use('/events', eventsRouter);
 
 export default api;

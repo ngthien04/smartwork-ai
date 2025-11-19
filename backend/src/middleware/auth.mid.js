@@ -1,55 +1,32 @@
-// src/middleware/auth.mid.js
 import jwt from 'jsonwebtoken';
 import { UNAUTHORIZED } from '../constants/httpStatus.js';
 
-const REQUIRE_SECRET = () => {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is not set');
+export default function authMid(req, res, next) {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(UNAUTHORIZED).send('Missing or invalid Authorization header');
   }
-};
 
-const authMid = (req, res, next) => {
-  const token =
-    req.headers.authorization?.split(' ')[1] || // "Bearer <token>"
-    req.headers['access_token'];
-
-  if (!token) return res.status(UNAUTHORIZED).send('Missing token');
+  const token = authHeader.substring('Bearer '.length).trim();
+  if (!token) {
+    return res.status(UNAUTHORIZED).send('Missing token');
+  }
 
   try {
-    REQUIRE_SECRET();
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { id, email, isAdmin, iat, exp }
+
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      name: decoded.name,
+      isAdmin: !!decoded.isAdmin,
+      roles: decoded.roles || [],
+    };
+
     next();
-  } catch (error) {
+  } catch (e) {
+    console.error('[authMid] JWT error:', e?.message || e);
     return res.status(UNAUTHORIZED).send('Invalid or expired token');
   }
-};
-
-const generateTokenResponse = (user) => {
-  REQUIRE_SECRET();
-
-  const hasAdminRole =
-    Array.isArray(user.roles) && user.roles.some((role) => role?.role === 'admin');
-  const isAdmin = typeof user.isAdmin === 'boolean' ? user.isAdmin : hasAdminRole;
-
-  const payload = {
-    id: user.id || String(user._id), // ưu tiên virtual id, fallback _id
-    email: user.email,
-    isAdmin,
-  };
-
-  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15d' });
-
-  return {
-    id: payload.id,
-    email: user.email,
-    name: user.name,
-    // address: user.address, // ⛔ schema không có, bỏ hoặc thêm vào schema
-    isAdmin,
-    avatarUrl: user.avatarUrl,
-    token,
-  };
-};
-
-export default authMid;
-export { generateTokenResponse };
+}

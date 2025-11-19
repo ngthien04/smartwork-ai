@@ -29,9 +29,20 @@ function ensureMemberRole(teamDoc, userId) {
   return found?.role || null;
 }
 
-function isleaderOrAdmin(teamDoc, userId) {
-  const role = ensureMemberRole(teamDoc, userId);
+function isTeamMember(teamDoc, user) {
+  if (user?.isAdmin) return true; // global admin cho qua luôn nếu bạn thích
+  return teamDoc.members?.some((m) => String(m.user) === String(user.id));
+}
+
+function isLeaderOrAdmin(teamDoc, user) {
+  if (user?.isAdmin) return true;
+  const role = ensureMemberRole(teamDoc, user.id);
   return role === 'leader' || role === 'admin';
+}
+
+function canInvite(teamDoc, user) {
+  // member, leader, admin trong team đều mời được
+  return isTeamMember(teamDoc, user);
 }
 
 // GET /api/teams  -> danh sách team của current user
@@ -67,8 +78,14 @@ router.get(
     const team = await TeamModel.findById(teamId).lean();
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    const isMember = team.members?.some((m) => String(m.user) === String(req.user.id));
-    if (!isMember) return res.status(UNAUTHORIZED).send('Bạn không thuộc team này');
+    const isMember = team.members?.some(
+      (m) => String(m.user) === String(req.user.id)
+    );
+    const isGlobalAdmin = req.user.isAdmin === true; 
+
+    if (!isMember && !isGlobalAdmin) {
+      return res.status(UNAUTHORIZED).send('Bạn không thuộc team này');
+    }
 
     res.send(team);
   })
@@ -121,7 +138,7 @@ router.put(
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    if (!isleaderOrAdmin(team, req.user.id)) {
+    if (!isLeaderOrAdmin(team, req.user)) {
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới được cập nhật team');
     }
 
@@ -158,7 +175,7 @@ router.put(
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    if (!isleaderOrAdmin(team, req.user.id)) {
+    if (!isLeaderOrAdmin(team, req.user)) {
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới được archive team');
     }
 
@@ -239,7 +256,7 @@ router.post(
 
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isleaderOrAdmin(team, req.user.id)) {
+    if (!isLeaderOrAdmin(team, req.user)) {
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới thêm thành viên');
     }
     if (!userId) return res.status(BAD_REQUEST).send('Thiếu userId');
@@ -295,7 +312,7 @@ router.delete(
     const { teamId, userId } = req.params;
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isleaderOrAdmin(team, req.user.id)) {
+    if (!isLeaderOrAdmin(team, req.user)) {
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới xoá thành viên');
     }
 
@@ -333,8 +350,12 @@ router.post(
 
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isleaderOrAdmin(team, req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới mời thành viên');
+
+    // ✅ member là mời được, không cần leader/admin
+    if (!canInvite(team, req.user)) {
+      return res
+        .status(UNAUTHORIZED)
+        .send('Bạn phải là thành viên team mới được mời người khác');
     }
 
     const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -347,7 +368,6 @@ router.post(
       token,
       expiresAt,
     });
-
 
     await recordActivity({
       team: team._id,

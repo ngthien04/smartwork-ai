@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import { connectMongo, disconnectMongo } from './config/database.config.js';
-import { UserModel, TeamModel } from './models/index.js';
+import { UserModel } from './models/index.js';
 import bcrypt from 'bcrypt';
 
 (async () => {
@@ -9,15 +9,9 @@ import bcrypt from 'bcrypt';
 
   console.log('✅ Connected to MongoDB');
 
-  // Xoá user/team cũ nếu trùng email
-  await UserModel.deleteOne({ email: 'admin@gmail.com' });
-
-  // Tạo team mẫu (nếu chưa có)
-  let team = await TeamModel.findOne({ name: 'SmartWork Dev Team' });
-  if (!team) {
-    team = await TeamModel.create({ name: 'SmartWork Dev Team' });
-    console.log('👥 Team created:', team.name);
-  }
+  // Xoá toàn bộ users
+  await UserModel.deleteMany({});
+  console.log('🗑️ All users deleted');
 
   // Tạo user admin
   const password = '123456';
@@ -30,7 +24,7 @@ import bcrypt from 'bcrypt';
     passwordHash,
     roles: [
       {
-        team: team._id,
+        team: null,
         role: 'admin',
       },
     ],
@@ -44,7 +38,6 @@ import bcrypt from 'bcrypt';
   console.log({
     email: user.email,
     password: password,
-    team: team.name,
   });
 
   await disconnectMongo();

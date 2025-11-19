@@ -13,9 +13,13 @@ import {
   Progress,
   List,
   Space,
+  Modal,
+  Form,
+  message,
 } from 'antd';
 import { PlusOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { mockProjects, mockTasks, mockUsers } from '@/data/mockData';
+import projectServices from '@/services/projectService';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -24,6 +28,10 @@ export default function ProjectListPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'all' | 'active' | 'archived'>('all');
+
+  // state cho modal tạo dự án
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [form] = Form.useForm();
 
   const filteredProjects = useMemo(() => {
     return mockProjects.filter((project) => {
@@ -38,6 +46,48 @@ export default function ProjectListPage() {
     });
   }, [search, status]);
 
+  // mở modal
+  const handleOpenCreateModal = () => {
+    form.resetFields();
+    form.setFieldsValue({
+      name: '',
+      key: '',
+      description: '',
+      lead: undefined,
+    });
+    setCreateModalOpen(true);
+  };
+
+  // bấm OK trong modal
+  const handleCreateProject = async () => {
+    try {
+      const values = await form.validateFields();
+
+      const res = await projectServices.create({
+        name: values.name,
+        key: values.key,
+        description: values.description,
+        lead: values.lead,
+        // teamId: có thể không truyền, service tự dùng DEFAULT_TEAM_ID
+      });
+
+      const created = res.data; // project từ backend
+
+      message.success('Tạo dự án thành công');
+      setCreateModalOpen(false);
+
+      // chuyển sang ProjectDetailPage dùng _id từ backend
+      navigate(`/projects/${created._id}`);
+    } catch (err: any) {
+      if (err?.errorFields) {
+        // lỗi validate form antd
+        return;
+      }
+      const msg = err?.response?.data || 'Tạo dự án thất bại';
+      message.error(String(msg));
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -46,10 +96,14 @@ export default function ProjectListPage() {
             Danh sách dự án
           </Title>
           <Text type="secondary">
-            Data cứng
+            Data cứng (list đang dùng mock, nút Tạo dự án đã gọi backend)
           </Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} >
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleOpenCreateModal}
+        >
           Tạo dự án
         </Button>
       </div>
@@ -162,7 +216,47 @@ export default function ProjectListPage() {
           />
         </Card>
       )}
+
+      {/* Modal tạo dự án */}
+      <Modal
+        title="Tạo dự án mới"
+        open={createModalOpen}
+        onCancel={() => setCreateModalOpen(false)}
+        onOk={handleCreateProject}
+        okText="Tạo dự án"
+      >
+        <Form layout="vertical" form={form}>
+          <Form.Item
+            name="name"
+            label="Tên dự án"
+            rules={[{ required: true, message: 'Nhập tên dự án' }]}
+          >
+            <Input placeholder="VD: Smartwork AI" />
+          </Form.Item>
+
+          <Form.Item
+            name="key"
+            label="Mã dự án (KEY)"
+            rules={[{ required: true, message: 'Nhập mã dự án' }]}
+          >
+            <Input placeholder="VD: SWAI" />
+          </Form.Item>
+
+          <Form.Item name="description" label="Mô tả">
+            <Input.TextArea rows={3} placeholder="Mô tả ngắn về dự án" />
+          </Form.Item>
+
+          <Form.Item name="lead" label="Lead (tùy chọn)">
+            <Select allowClear placeholder="Chọn người lead">
+              {mockUsers.map((user) => (
+                <Option key={user.id} value={user.id}>
+                  {user.name}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
-
