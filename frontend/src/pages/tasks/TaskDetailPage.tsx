@@ -816,12 +816,7 @@ export default function TaskDetailPage() {
                               cancelText="Huỷ"
                               onConfirm={() => handleDeleteAttachment(String(att._id))}
                             >
-                              <Button
-                                type="link"
-                                danger
-                                icon={<DeleteOutlined />}
-                                size="small"
-                              >
+                              <Button type="link" danger icon={<DeleteOutlined />} size="small">
                                 Xoá
                               </Button>
                             </Popconfirm>
@@ -832,26 +827,19 @@ export default function TaskDetailPage() {
                           title={
                             <Space direction="vertical" size={0}>
                               <Text ellipsis>{att.name}</Text>
-                              <Text type="secondary" className="text-xs">
-                                Thuộc subtask:{' '}
-                                <b>
-                                  {att.subtask
-                                    ? (att.subtask as any).title || 'Không rõ'
-                                    : 'Không có'}
-                                </b>
-                              </Text>
+                              {att.subtask && (
+                                <Text type="secondary" className="text-xs">
+                                  Thuộc subtask:{' '}
+                                  <b>{(att.subtask as any).title || 'Không rõ'}</b>
+                                </Text>
+                              )}
                             </Space>
                           }
                           description={
                             <Space size="small">
-                              {att.mimeType && (
-                                <Text type="secondary" className="text-xs">
-                                  {att.mimeType}
-                                </Text>
-                              )}
                               {typeof att.size === 'number' && (
                                 <Text type="secondary" className="text-xs">
-                                  • {(att.size / 1024).toFixed(1)} KB
+                                  {(att.size / 1024).toFixed(1)} KB
                                 </Text>
                               )}
                             </Space>

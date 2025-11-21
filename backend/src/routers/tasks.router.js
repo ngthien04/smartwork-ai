@@ -518,27 +518,30 @@ router.post(
 );
 
 // POST /tasks/:taskId/attachments/upload
-// form-data: field name = "file"; optional body { folder, filename }
-// => Upload lên Cloudinary, rồi tạo Attachment (provider=cloudinary)
 router.post(
   '/:taskId/attachments/upload',
   authMid,
   upload.single('file'),
   handler(async (req, res) => {
     const { taskId } = req.params;
-    const { subtaskId } = req.body || {};   // 🌟 lấy subtaskId từ form-data
+    const { subtaskId } = req.body || {};
     const file = req.file;
 
     if (!file) return res.status(BAD_REQUEST).send('Missing file');
 
-    const task = await TaskModel.findById(taskId).lean();
-    if (!task || task.isDeleted) return res.status(404).send('Task không tồn tại');
+    // Lấy task dạng document để chắc chắn tồn tại
+    const task = await TaskModel.findById(taskId);
+    if (!task || task.isDeleted) {
+      return res.status(404).send('Task không tồn tại');
+    }
 
+    // Nếu có subtaskId thì validate subtask thuộc task này
     let subtaskDoc = null;
     if (subtaskId) {
       if (!isValidId(subtaskId)) {
         return res.status(BAD_REQUEST).send('Invalid subtaskId');
       }
+
       subtaskDoc = await SubtaskModel.findOne({
         _id: subtaskId,
         parentTask: task._id,
@@ -549,17 +552,17 @@ router.post(
       }
     }
 
-    // upload lên Cloudinary
+    // Upload lên Cloudinary
     const result = await uploadToCloudinary(file.buffer, {
       folder: 'smartwork/attachments',
       filename: undefined,
       resource_type: 'auto',
     });
 
+    // Tạo attachment, gắn task + (optional) subtask
     const att = await AttachmentModel.create({
       task: task._id,
-      subtask: subtaskDoc ? subtaskDoc._id : undefined,
-      subtask: subtaskId || null,
+      subtask: subtaskDoc ? subtaskDoc._id : null,   // 👈 chỉ set 1 lần
       uploadedBy: req.user.id,
       name: file.originalname,
       mimeType: file.mimetype,
@@ -571,9 +574,14 @@ router.post(
       },
     });
 
+    // 👇 Quan trọng: add attachment vào task.attachments để populate được
+    await TaskModel.findByIdAndUpdate(task._id, {
+      $addToSet: { attachments: att._id },
+    });
+
     const populated = await AttachmentModel.findById(att._id)
       .populate('subtask', 'title')
-      .populate('uploadedBy', 'name email')
+      .populate('uploadedBy', 'name email avatarUrl')
       .lean();
 
     res.status(201).send(populated);
