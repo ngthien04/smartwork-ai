@@ -12,20 +12,22 @@ import { AttachmentModel } from '../models/attachment.js';
 import { ActivityModel } from '../models/activity.js';
 import { UserModel } from '../models/users.js';
 
+
 import multer from 'multer';
 import { configCloudinary } from '../config/cloudinary.config.js'; 
 const cloudinary = configCloudinary();
+const isValidId = (id) => mongoose.isValidObjectId(id);
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024, 
+    fileSize: 20 * 1024 * 1024, // 20MB
   },
   fileFilter: (req, file, cb) => {
     const ok =
-      /^image\\//test(file.mimetype) ||
+      /^image\//.test(file.mimetype) ||                 
       file.mimetype === 'application/pdf' ||
-      file.mimetype === 'application/octet-stream'; 
+      file.mimetype === 'application/octet-stream';     
     cb(ok ? null : new Error('Unsupported file type'), ok);
   },
 });
@@ -123,21 +125,39 @@ router.get(
   })
 );
 
-//GET /tasks/:taskId
+
+// GET /tasks/:taskId
 router.get(
   '/:taskId',
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
+
     const task = await TaskModel.findById(taskId)
       .populate('assignees', 'name email avatarUrl')
       .populate('reporter', 'name email avatarUrl')
       .populate('labels')
+      .populate({
+        path: 'attachments',
+        populate: [
+          {
+            path: 'subtask',
+            select: 'title',              
+          },
+          {
+            path: 'uploadedBy',
+            select: 'name email avatarUrl' // nếu muốn show ai upload
+          },
+        ],
+      })
       .lean();
 
-    if (!task || task.isDeleted) return res.status(404).send('Task không tồn tại');
+    if (!task || task.isDeleted) {
+      return res.status(404).send('Task không tồn tại');
+    }
+
     res.send(task);
-  })
+  }),
 );
 
 //POST /tasks  (create)
@@ -506,48 +526,58 @@ router.post(
   upload.single('file'),
   handler(async (req, res) => {
     const { taskId } = req.params;
-    const exists = await TaskModel.exists({ _id: taskId, isDeleted: { $ne: true } });
-    if (!exists) return res.status(404).send('Task không tồn tại');
+    const { subtaskId } = req.body || {};   // 🌟 lấy subtaskId từ form-data
+    const file = req.file;
 
-    if (!req.file) return res.status(BAD_REQUEST).send('Missing file');
+    if (!file) return res.status(BAD_REQUEST).send('Missing file');
 
-    const { originalname, mimetype, size, buffer } = req.file;
-    const { folder = 'smartwork/attachments', filename } = req.body || {};
+    const task = await TaskModel.findById(taskId).lean();
+    if (!task || task.isDeleted) return res.status(404).send('Task không tồn tại');
 
-    // Upload lên Cloudinary
-    const uploaded = await uploadToCloudinary(buffer, {
-      folder,
-      filename,                
-      resource_type: 'auto',   
+    let subtaskDoc = null;
+    if (subtaskId) {
+      if (!isValidId(subtaskId)) {
+        return res.status(BAD_REQUEST).send('Invalid subtaskId');
+      }
+      subtaskDoc = await SubtaskModel.findOne({
+        _id: subtaskId,
+        parentTask: task._id,
+      }).lean();
+
+      if (!subtaskDoc) {
+        return res.status(BAD_REQUEST).send('Subtask không thuộc task này');
+      }
+    }
+
+    // upload lên Cloudinary
+    const result = await uploadToCloudinary(file.buffer, {
+      folder: 'smartwork/attachments',
+      filename: undefined,
+      resource_type: 'auto',
     });
 
     const att = await AttachmentModel.create({
-      task: taskId,
+      task: task._id,
+      subtask: subtaskDoc ? subtaskDoc._id : undefined,
+      subtask: subtaskId || null,
       uploadedBy: req.user.id,
-      name: uploaded.original_filename || originalname,
-      mimeType: mimetype,
-      size,
+      name: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
       storage: {
         provider: 'cloudinary',
-        key: uploaded.public_id,     
-        url: uploaded.secure_url,
+        key: result.public_id,
+        url: result.secure_url,
       },
     });
 
-    await TaskModel.findByIdAndUpdate(taskId, { $addToSet: { attachments: att._id } });
+    const populated = await AttachmentModel.findById(att._id)
+      .populate('subtask', 'title')
+      .populate('uploadedBy', 'name email')
+      .lean();
 
-    const task = await TaskModel.findById(taskId).lean();
-    await recordActivity({
-      team: task.team,
-      actor: req.user.id,
-      verb: 'attachment_added',
-      targetType: 'task',
-      targetId: task._id,
-      metadata: { attachmentId: att._id, name: att.name, publicId: uploaded.public_id },
-    });
-
-    return res.status(201).send(att);
-  })
+    res.status(201).send(populated);
+  }),
 );
 
 // DELETE /tasks/:taskId/attachments/:attachmentId

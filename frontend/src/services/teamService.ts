@@ -81,6 +81,10 @@ const teamService = {
   deleteTeam(teamId: string) {
     return api.delete(`/teams/${teamId}`);
   },
+
+  getBySlug(slug: string): Promise<Team> {
+    return api.get(`/teams/slug/${slug}`);
+  },
 };
 
 export default teamService;

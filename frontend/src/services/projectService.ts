@@ -1,9 +1,8 @@
-// src/services/projectServices.ts
+// src/services/projectService.ts
 import api from './api';
-import { DEFAULT_TEAM_ID } from '@/data/mockData'; // team mock nhưng id phải tồn tại ở BE
 
 export interface ProjectListParams {
-  team?: string;        
+  team: string;            
   q?: string;
   isArchived?: boolean;
   page?: number;
@@ -12,22 +11,27 @@ export interface ProjectListParams {
 }
 
 export interface CreateProjectPayload {
+  team: string;           
   name: string;
   key: string;
   description?: string;
   lead?: string;
-  teamId?: string;      
+}
+
+export interface UpdateProjectPayload {
+  name?: string;
+  key?: string;
+  description?: string;
+  lead?: string | null;
+  isArchived?: boolean;
 }
 
 const projectServices = {
   // GET /api/projects
-  list(params: ProjectListParams = {}) {
-    const team = params.team || DEFAULT_TEAM_ID;
-
+  list(params: ProjectListParams) {
     return api.get('/projects', {
       params: {
         ...params,
-        team,
         ...(typeof params.isArchived === 'boolean'
           ? { isArchived: String(params.isArchived) }
           : {}),
@@ -42,15 +46,27 @@ const projectServices = {
 
   // POST /api/projects
   create(payload: CreateProjectPayload) {
-    const team = payload.teamId || DEFAULT_TEAM_ID;
+    return api.post('/projects', payload);
+  },
 
-    return api.post('/projects', {
-      team,
-      name: payload.name,
-      key: payload.key,
-      description: payload.description,
-      lead: payload.lead,
-    });
+  // PUT /api/projects/:projectId
+  update(projectId: string, payload: UpdateProjectPayload) {
+    return api.put(`/projects/${projectId}`, payload);
+  },
+
+  // PUT /api/projects/:projectId/archive
+  archive(projectId: string, isArchived = true) {
+    return api.put(`/projects/${projectId}/archive`, { isArchived });
+  },
+
+  // DELETE /api/projects/:projectId
+  delete(projectId: string) {
+    return api.delete(`/projects/${projectId}`);
+  },
+
+  // GET /api/projects/:projectId/stats/overview
+  getOverview(projectId: string) {
+    return api.get(`/projects/${projectId}/stats/overview`);
   },
 };
 

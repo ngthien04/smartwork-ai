@@ -5,7 +5,7 @@ import { RobotOutlined, BulbOutlined, CalendarOutlined } from '@ant-design/icons
 import { useTranslation } from 'react-i18next';
 import ChatPanel from '@/components/chat/ChatPanel';
 import { aiServices } from '@/services/aiServices';
-import { taskServices } from '@/services/taskServices';
+import  taskServices  from '@/services/taskServices';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 const { Title, Text } = Typography;
@@ -32,7 +32,7 @@ export default function AssistantPage() {
 
   // Create tasks from AI suggestions
   const createTasksMutation = useMutation({
-    mutationFn: taskServices.createBatch,
+    //mutationFn: taskServices.createBatch,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setAiSuggestions([]);
@@ -52,9 +52,9 @@ export default function AssistantPage() {
   };
 
   const handleImportTasks = () => {
-    if (aiSuggestions.length === 0) return;
+    // if (aiSuggestions.length === 0) return;
     
-    createTasksMutation.mutate(aiSuggestions);
+    // createTasksMutation.mutate(aiSuggestions);
   };
 
   const quickPrompts = [
@@ -128,7 +128,7 @@ export default function AssistantPage() {
                   ))}
                   <Button
                     type="primary"
-                    onClick={handleImportTasks}
+                    //onClick={handleImportTasks}
                     loading={createTasksMutation.isPending}
                     className="w-full mt-2"
                   >

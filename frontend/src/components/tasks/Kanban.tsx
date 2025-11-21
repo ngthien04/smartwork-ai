@@ -1,14 +1,11 @@
 // src/components/tasks/Kanban.tsx
 import type { MouseEvent } from 'react';
-import { Card, Button, Tag, Typography, Dropdown } from 'antd';
+import { Card, Button, Tag, Typography, Dropdown, Tooltip } from 'antd';
 import { MoreOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-} from "@hello-pangea/dnd";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import type { DropResult } from "@hello-pangea/dnd";
 import type { Task } from '@/types';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const { Text } = Typography;
 
@@ -20,14 +17,16 @@ interface KanbanProps {
   onTaskSelect?: (task: Task) => void;
 }
 
-const statusConfig = {
+const statusConfig: Record<Task['status'], { title: string; color: string }> = {
   todo: { title: 'Cần làm', color: 'default' },
   in_progress: { title: 'Đang làm', color: 'blue' },
   done: { title: 'Hoàn thành', color: 'green' },
   backlog: { title: 'Tồn đọng', color: 'gray' },
+  review: { title: 'Đang review', color: 'purple' },
+  blocked: { title: 'Bị chặn', color: 'red' },
 };
 
-const priorityConfig = {
+const priorityConfig: Record<string, { color: string }> = {
   low: { color: 'green' },
   normal: { color: 'blue' },
   medium: { color: 'blue' },
@@ -44,116 +43,103 @@ export default function Kanban({
 }: KanbanProps) {
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
-
     const { source, destination, draggableId } = result;
-    
-    if (source.droppableId === destination.droppableId) {
-      // Same column - reorder
-      return;
-    }
 
-    // Different column - update status
+    if (source.droppableId === destination.droppableId) return;
+
     const newStatus = destination.droppableId as Task['status'];
     onTaskUpdate(draggableId, { status: newStatus });
   };
 
-  const getTasksByStatus = (status: Task['status']) => {
-    return tasks.filter(task => task.status === status);
-  };
+  const getTasksByStatus = (status: Task['status']) => tasks.filter(t => t.status === status);
 
   const renderTask = (task: Task, index: number) => {
     const priority = task.priority || 'medium';
-    
+
     const handleCardClick = (event: MouseEvent) => {
       if ((event.target as HTMLElement).closest('.ant-card-actions')) return;
       onTaskSelect?.(task);
     };
-    
+
     return (
       <Draggable key={task.id} draggableId={task.id} index={index}>
-        {(provided: any, snapshot: any) => (
+        {(provided, snapshot) => (
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}
             {...provided.dragHandleProps}
-            className={`mb-3 ${snapshot.isDragging ? 'opacity-50' : ''}`}
           >
-            <Card
-              size="small"
-              className="hover:shadow-md transition-shadow cursor-pointer"
-              actions={[
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: 'edit',
-                        icon: <EditOutlined />,
-                        label: 'Sửa',
-                        onClick: () => {},
-                      },
-                      {
-                        type: 'divider' as const,
-                      },
-                      {
-                        key: 'delete',
-                        icon: <DeleteOutlined />,
-                        danger: true,
-                        label: 'Xóa',
-                        onClick: () => onTaskDelete(task.id),
-                      },
-                    ],
-                  }}
-                  trigger={['click']}
-                >
-                  <MoreOutlined />
-                </Dropdown>
-              ]}
-              onClick={() => onTaskSelect?.(task)}
-              onClick={handleCardClick}
+            <motion.div
+              layout
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className={`mb-3`}
             >
-              <div className="space-y-2">
-                <Text strong className="block">{task.title}</Text>
-                
-                {task.description && (
-                  <Text type="secondary" className="text-xs block">
-                    {task.description.length > 100 
-                      ? `${task.description.substring(0, 100)}...` 
-                      : task.description
-                    }
-                  </Text>
-                )}
+              <Tooltip
+                title={
+                  <>
+                    {task.description && <div>{task.description}</div>}
+                    {task.storyPoints !== undefined && <div>Story Points: {task.storyPoints}</div>}
+                    {task.dueDate && <div>Deadline: {new Date(task.dueDate).toLocaleDateString()}</div>}
+                  </>
+                }
+                placement="topLeft"
+              >
+                <Card
+                  size="small"
+                  className="hover:shadow-md transition-shadow cursor-pointer"
+                  actions={[
+                    <Dropdown
+                      menu={{
+                        items: [
+                          { key: 'edit', icon: <EditOutlined />, label: 'Sửa', onClick: () => {} },
+                          { type: 'divider' as const },
+                          { key: 'delete', icon: <DeleteOutlined />, danger: true, label: 'Xóa', onClick: () => onTaskDelete(task.id) },
+                        ],
+                      }}
+                      trigger={['click']}
+                    >
+                      <MoreOutlined />
+                    </Dropdown>,
+                  ]}
+                  onClick={handleCardClick}
+                >
+                  <div className="space-y-2">
+                    <Text strong className="block">{task.title}</Text>
 
-                <div className="flex justify-between items-center">
-                  <Tag 
-                    color={priorityConfig[priority].color} 
-                    size="small"
-                  >
-                    {priority}
-                  </Tag>
-                  
-                  {task.dueDate && (
-                    <Text type="secondary" className="text-xs">
-                      {new Date(task.dueDate).toLocaleDateString()}
-                    </Text>
-                  )}
-                </div>
+                    {task.description && (
+                      <Text type="secondary" className="text-xs block">
+                        {task.description.length > 100
+                          ? `${task.description.substring(0, 100)}...`
+                          : task.description
+                        }
+                      </Text>
+                    )}
 
-                {task.tags && task.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {task.tags.slice(0, 2).map(tag => (
-                      <Tag key={tag} size="small" color="blue">
-                        {tag}
-                      </Tag>
-                    ))}
-                    {task.tags.length > 2 && (
-                      <Tag size="small" color="default">
-                        +{task.tags.length - 2}
-                      </Tag>
+                    <div className="flex justify-between items-center">
+                      <Tag color={priorityConfig[priority].color}>{priority}</Tag>
+                      {task.dueDate && (
+                        <Text type="secondary" className="text-xs">
+                          {new Date(task.dueDate).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </div>
+
+                    {task.tags && task.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {task.tags.slice(0, 2).map(tag => (
+                          <Tag key={tag} color="blue">{tag}</Tag>
+                        ))}
+                        {task.tags.length > 2 && (
+                          <Tag color="default">+{task.tags.length - 2}</Tag>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </Card>
+                </Card>
+              </Tooltip>
+            </motion.div>
           </div>
         )}
       </Draggable>
@@ -161,7 +147,7 @@ export default function Kanban({
   };
 
   const renderColumn = (status: Task['status']) => {
-    const tasks = getTasksByStatus(status);
+    const tasksByStatus = getTasksByStatus(status);
     const config = statusConfig[status];
 
     return (
@@ -170,9 +156,7 @@ export default function Kanban({
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center space-x-2">
               <Tag color={config.color}>{config.title}</Tag>
-              <Text type="secondary" className="text-sm">
-                {tasks.length}
-              </Text>
+              <Text type="secondary" className="text-sm">{tasksByStatus.length}</Text>
             </div>
             <Button
               type="text"
@@ -184,13 +168,15 @@ export default function Kanban({
           </div>
 
           <Droppable droppableId={status}>
-            {(provided: any, snapshot: any) => (
+            {(provided, snapshot) => (
               <div
                 ref={provided.innerRef}
                 {...provided.droppableProps}
-                className={`min-h-32 ${snapshot.isDraggingOver ? 'bg-blue-50' : ''}`}
+                className={`min-h-32 transition-colors ${snapshot.isDraggingOver ? 'bg-blue-50' : ''}`}
               >
-                {tasks.map((task, index) => renderTask(task, index))}
+                <AnimatePresence>
+                  {tasksByStatus.map((task, index) => renderTask(task, index))}
+                </AnimatePresence>
                 {provided.placeholder}
               </div>
             )}
@@ -206,6 +192,8 @@ export default function Kanban({
         {renderColumn('backlog')}
         {renderColumn('todo')}
         {renderColumn('in_progress')}
+        {renderColumn('review')}
+        {renderColumn('blocked')}
         {renderColumn('done')}
       </div>
     </DragDropContext>

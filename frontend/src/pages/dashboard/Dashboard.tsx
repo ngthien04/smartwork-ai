@@ -15,12 +15,13 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { taskServices } from '@/services/taskServices';
+import taskServices from '@/services/taskServices';
 import { calendarServices } from '@/services/calendarServices';
 import { noteServices } from '@/services/noteServices';
 import inviteService, { type Invite } from '@/services/inviteService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Space, message } from 'antd';
+import type { Task as ApiTask } from '@/services/taskServices';
 
 
 export default function Dashboard() {
@@ -68,7 +69,7 @@ export default function Dashboard() {
 
   const { data: tasksResponse } = useQuery({
     queryKey: ['dashboard', 'tasks'],
-    queryFn: () => taskServices.list({ size: 20 }),
+    queryFn: () => taskServices.list({ limit: 20 }),
   });
 
   const { data: notesResponse } = useQuery({
@@ -85,17 +86,21 @@ export default function Dashboard() {
     },
   });
 
-  const recentTasks = useMemo(() => {
-    const items = tasksResponse?.items || tasksResponse?.data || [];
+  const recentTasks = useMemo<ApiTask[]>(() => {
+    const items = tasksResponse?.data?.items ?? [];
     return items.slice(0, 5);
   }, [tasksResponse]);
 
+
   const completedTasks = useMemo(() => {
-    const items = tasksResponse?.items || tasksResponse?.data || [];
+    const items = tasksResponse?.data?.items ?? [];
     return items.filter((task) => task.status === 'done').length;
   }, [tasksResponse]);
 
-  const totalTasks = tasksResponse?.total ?? (tasksResponse?.items || tasksResponse?.data || []).length;
+  const totalTasks =
+    tasksResponse?.data?.total ??
+    (tasksResponse?.data?.items?.length ?? 0);
+
 
   const upcomingEvents = useMemo(() => {
     return (eventsResponse?.data || []).slice(0, 5);
@@ -270,8 +275,8 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">Chưa có công việc nào gần đây.</p>
               ) : (
                 <div className="space-y-3">
-                  {recentTasks.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  {recentTasks.map((task: ApiTask) => (
+                    <div key={task._id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex items-center space-x-3">
                         {getStatusIcon(task.status)}
                         <div>

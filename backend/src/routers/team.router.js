@@ -312,32 +312,63 @@ router.delete(
     const { teamId, userId } = req.params;
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-    if (!isLeaderOrAdmin(team, req.user)) {
-      return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới xoá thành viên');
+
+    const isSelfRemove = String(req.user.id) === String(userId);
+
+    // ================================
+    // CASE 1: USER tự rời team
+    // ================================
+    if (isSelfRemove) {
+      const myRole = ensureMemberRole(team, userId);
+
+      // Không cho rời nếu là leader cuối cùng
+      if (myRole === 'leader') {
+        const leaderCount = team.members.filter((m) => m.role === 'leader').length;
+        if (leaderCount <= 1) {
+          return res.status(BAD_REQUEST).send('Bạn là leader cuối cùng, không thể rời team');
+        }
+      }
+
+      await TeamModel.updateOne(
+        { _id: team._id },
+        { $pull: { members: { user: toId(userId) } } }
+      );
+      await UserModel.updateOne(
+        { _id: toId(userId) },
+        { $pull: { roles: { team: team._id } } }
+      );
+
+      return res.send({ ok: true });
     }
 
-    // không cho xoá chính leader cuối cùng
+    // ================================
+    // CASE 2: LEADER/ADMIN kick người khác
+    // ================================
+    if (!isLeaderOrAdmin(team, req.user)) {
+      return res.status(401).send('Chỉ leader/admin mới xoá thành viên');
+    }
+
     const targetRole = ensureMemberRole(team, userId);
     if (targetRole === 'leader') {
       const leaderCount = team.members.filter((m) => m.role === 'leader').length;
-      if (leaderCount <= 1) return res.status(BAD_REQUEST).send('Không thể xoá leader cuối cùng');
+      if (leaderCount <= 1) {
+        return res.status(BAD_REQUEST).send('Không thể xoá leader cuối cùng');
+      }
     }
 
-    await TeamModel.updateOne({ _id: team._id }, { $pull: { members: { user: toId(userId) } } });
-    await UserModel.updateOne({ _id: toId(userId) }, { $pull: { roles: { team: team._id } } });
+    await TeamModel.updateOne(
+      { _id: team._id },
+      { $pull: { members: { user: toId(userId) } } }
+    );
+    await UserModel.updateOne(
+      { _id: toId(userId) },
+      { $pull: { roles: { team: team._id } } }
+    );
 
-    await recordActivity({
-      team: team._id,
-      actor: req.user.id,
-      verb: 'member_removed',
-      targetType: 'team',
-      targetId: team._id,
-      metadata: { userId },
-    });
-
-    res.send();
+    res.send({ ok: true });
   })
 );
+
 
 
 router.post(
@@ -443,5 +474,13 @@ router.post(
     res.send({ ok: true });
   })
 );
+
+// GET /api/teams/slug/:slug
+router.get('/slug/:slug', authMid, async (req, res) => {
+  const { slug } = req.params;
+  const teamDoc = await TeamModel.findOne({ slug, isDeleted: { $ne: true } }).lean();
+  if (!teamDoc) return res.status(404).send('Team không tồn tại');
+  res.send(teamDoc);
+});
 
 export default router;

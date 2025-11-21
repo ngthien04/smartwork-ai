@@ -18,6 +18,7 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
 }
 
 // GET /api/comments?task=<taskId>&page=&limit=
+// GET /api/comments?task=<taskId>&page=&limit=
 router.get(
   '/',
   authMid,
@@ -32,6 +33,7 @@ router.get(
     const [items, total] = await Promise.all([
       CommentModel.find({ task: toId(task) })
         .populate('author', 'name email avatarUrl')
+        .populate('mentions', 'name email avatarUrl')   // <-- thêm dòng này
         .sort('-createdAt')
         .skip(skip)
         .limit(Number(limit))
@@ -44,7 +46,7 @@ router.get(
 );
 
 // POST /api/comments  (create comment)
-// body: { task, content, mentions?[] }
+// POST /api/comments  (create comment)
 router.post(
   '/',
   authMid,
@@ -73,15 +75,18 @@ router.post(
 
     const populated = await CommentModel.findById(cmt._id)
       .populate('author', 'name email avatarUrl')
+      .populate('mentions', 'name email avatarUrl')   // <-- thêm dòng này
       .lean();
 
     res.status(201).send(populated);
   })
 );
 
+
 // PUT /api/comments/:commentId  (edit comment)
 // body: { content }
 // chỉ cho phép tác giả hoặc admin
+// PUT /api/comments/:commentId
 router.put(
   '/:commentId',
   authMid,
@@ -102,8 +107,9 @@ router.put(
     }
 
     cmt.content = content;
-    cmt.edited = true;
-    cmt.editedAt = new Date();
+    cmt.isEdited = true;          // <-- dùng đúng field trong schema
+    // nếu muốn có editedAt thì bổ sung vào schema, còn không thì bỏ dòng dưới
+    // cmt.editedAt = new Date();
     await cmt.save();
 
     await recordActivity({
@@ -117,7 +123,9 @@ router.put(
 
     const updated = await CommentModel.findById(cmt._id)
       .populate('author', 'name email avatarUrl')
+      .populate('mentions', 'name email avatarUrl')   // <-- thêm dòng này
       .lean();
+
     res.send(updated);
   })
 );

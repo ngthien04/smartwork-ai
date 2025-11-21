@@ -54,6 +54,11 @@ export default function TeamManagementPage() {
   const [teamName, setTeamName] = useState('');
   const [teamSlug, setTeamSlug] = useState('');
 
+  const [createTeamModalVisible, setCreateTeamModalVisible] = useState(false);
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamSlug, setNewTeamSlug] = useState('');
+
   // modal rời/gỡ member
   const [removeMemberModalVisible, setRemoveMemberModalVisible] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<MemberRow | null>(null);
@@ -157,6 +162,28 @@ export default function TeamManagementPage() {
     }
   };
 
+  // 2. Hàm tạo team
+  const handleCreateTeam = async () => {
+    if (!newTeamName || !newTeamSlug) {
+      message.warning('Nhập tên và mã team trước');
+      return;
+    }
+    try {
+      setCreatingTeam(true);
+      const res = await teamService.createTeam({ name: newTeamName, slug: newTeamSlug });
+      message.success('Đã tạo team mới');
+      setNewTeamName('');
+      setNewTeamSlug('');
+      setCreateTeamModalVisible(false);
+      await loadTeamAndMembers(res.data._id); // load team mới
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data || 'Tạo team thất bại');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
   // ================= MỜI THÀNH VIÊN =================
   const handleInvite = async () => {
     if (!email) {
@@ -244,7 +271,25 @@ export default function TeamManagementPage() {
     try {
       await teamService.removeMember(team._id, memberToRemove.userId);
       message.success(isMe ? 'Bạn đã rời team' : 'Đã gỡ thành viên khỏi team');
-      await loadTeamAndMembers(team._id);
+
+      if (isMe) {
+        // Tải lại danh sách team mà user còn thuộc
+        const listRes = await teamService.listMyTeams();
+        const myTeams = listRes.data.items || [];
+
+        if (myTeams.length > 0) {
+          // Chuyển sang team đầu tiên còn thuộc
+          await loadTeamAndMembers(myTeams[0]._id);
+          navigate(`/teams/${myTeams[0]._id}`);
+        } else {
+          // Không còn team nào, set team = null
+          setTeam(null);
+          setMembers([]);
+        }
+      } else {
+        // Nếu gỡ người khác, load team hiện tại
+        await loadTeamAndMembers(team._id);
+      }
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Thao tác thất bại');
@@ -262,7 +307,20 @@ export default function TeamManagementPage() {
     try {
       await teamService.deleteTeam(team._id);
       message.success('Đã giải tán team');
-      await loadTeamAndMembers();
+
+      // load lại danh sách team còn tồn tại
+      const listRes = await teamService.listMyTeams();
+      const myTeams = listRes.data.items || [];
+
+      if (myTeams.length > 0) {
+        // chuyển sang team đầu tiên còn tồn tại
+        const nextTeamId = myTeams[0]._id;
+        await loadTeamAndMembers(nextTeamId);
+        navigate(`/teams/${nextTeamId}`);
+      } else {
+        setTeam(null);
+        setMembers([]);
+      }
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Không giải tán được team');
@@ -307,7 +365,14 @@ export default function TeamManagementPage() {
               <Text type="secondary" className="mr-2">
                 Chuyển team:
               </Text>
-              <Select style={{ minWidth: 200 }} value={team._id} onChange={(value) => navigate(`/teams/${value}`)}>
+              <Select
+                style={{ minWidth: 200 }}
+                value={team._id}
+                onChange={async (value) => {
+                  navigate(`/teams/${value}`);
+                  await loadTeamAndMembers(value); // force reload team mới
+                }}
+              >
                 {teams.map((t) => (
                   <Option key={t._id} value={t._id}>
                     {t.name}
@@ -320,6 +385,9 @@ export default function TeamManagementPage() {
         <Space>
           <Button icon={<TeamOutlined />} onClick={() => navigate('/projects')}>
             Xem dự án liên quan
+          </Button>
+          <Button type="primary" onClick={() => setCreateTeamModalVisible(true)}>
+            Tạo team mới
           </Button>
           {user && (
             <Button
@@ -467,6 +535,28 @@ export default function TeamManagementPage() {
             ? 'Bạn sẽ rời khỏi team này và mất quyền truy cập.'
             : `Thao tác này sẽ gỡ ${memberToRemove?.name} khỏi team.`}
         </p>
+      </Modal>
+
+      <Modal
+        title="Tạo team mới"
+        open={createTeamModalVisible}
+        onCancel={() => setCreateTeamModalVisible(false)}
+        onOk={handleCreateTeam}
+        okText="Tạo team"
+        confirmLoading={creatingTeam}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Input
+            placeholder="Tên team"
+            value={newTeamName}
+            onChange={(e) => setNewTeamName(e.target.value)}
+          />
+          <Input
+            placeholder="Mã/slug"
+            value={newTeamSlug}
+            onChange={(e) => setNewTeamSlug(e.target.value)}
+          />
+        </Space>
       </Modal>
 
       {/* MODAL ĐỔI ROLE */}

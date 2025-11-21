@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { calendarServices } from '@/services/calendarServices';
 import dayjs from 'dayjs';
-import { taskServices } from '@/services/taskServices';
+import taskServices, { type Task as ApiTask } from '@/services/taskServices';
 
 const { Title, Text } = Typography;
 export default function CalendarPage() {
@@ -66,13 +66,13 @@ export default function CalendarPage() {
 
   const { data: taskListResponse } = useQuery({
     queryKey: ['calendar', 'tasks'],
-    queryFn: () => taskServices.list({ size: 20 }),
+    queryFn: () => taskServices.list({ limit: 20 }),
   });
 
-  const pendingTasks = useMemo(() => {
-    const items = taskListResponse?.items || taskListResponse?.data || [];
-    return items.filter((task) => task.status !== 'done');
-  }, [taskListResponse]);
+const pendingTasks = useMemo<ApiTask[]>(() => {
+  const items = taskListResponse?.data?.items ?? [];
+  return items.filter((task: ApiTask) => task.status !== 'done');
+}, [taskListResponse]);
 
   const handleCreateEvent = () => {
     setEditingEvent(null);
@@ -119,7 +119,7 @@ export default function CalendarPage() {
 
     aiSuggestMutation.mutate({
       tasks: pendingTasks.map((task) => ({
-        id: task.id,
+        id: task._id,
         title: task.title,
         estimatedTime: task.estimate || task.storyPoints || 1,
         priority: task.priority,

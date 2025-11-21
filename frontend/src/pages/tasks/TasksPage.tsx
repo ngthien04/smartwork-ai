@@ -1,5 +1,4 @@
-// src/pages/tasks/TasksPage.tsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Row,
   Col,
@@ -12,7 +11,6 @@ import {
   Modal,
   Tag,
   Statistic,
-  Divider,
   Avatar,
   List,
   Tooltip,
@@ -29,43 +27,107 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+
 import Kanban from '@/components/tasks/Kanban';
-import type { Task } from '@/types';
-import { DEFAULT_TEAM_ID, mockLabels, mockSprints, mockTasks, mockUsers } from '@/data/mockData';
+import taskServices from '@/services/taskServices';
+import { mockLabels, mockSprints, mockUsers } from '@/data/mockData';
+import type { Task } from '@/types'; // <-- QUAN TRỌNG: giống Kanban
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+type Filters = {
+  search: string;
+  status: 'all' | 'backlog' | 'todo' | 'in_progress' | 'done';
+  priority: 'all' | 'low' | 'normal' | 'high' | 'urgent';
+  label: 'all' | string;
+  assignee: 'all' | string;
+};
+
 export default function TasksPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [filters, setFilters] = useState({
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [filters, setFilters] = useState<Filters>({
     search: '',
     status: 'all',
     priority: 'all',
     label: 'all',
     assignee: 'all',
-    sprint: 'all',
   });
+
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  // ===================== FETCH TASKS TỪ BACKEND =====================
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const res = await taskServices.list({ limit: 200, sort: '-createdAt' });
+      const raw = (res.data as any).items || res.data || [];
+
+      const mapped: Task[] = raw.map((t: any) => ({
+        ...t,
+        id: t.id || t._id, // normalize cho Kanban
+      }));
+
+      setTasks(mapped);
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data || 'Không tải được danh sách task');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const handleReload = () => {
+    fetchTasks();
+  };
+
+  // ===================== FILTER CLIENT =====================
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
+      const search = filters.search.toLowerCase();
       const matchesSearch =
-        task.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-        (task.description || '').toLowerCase().includes(filters.search.toLowerCase());
-      const matchesStatus = filters.status === 'all' || task.status === filters.status;
-      const matchesPriority = filters.priority === 'all' || task.priority === filters.priority;
+        task.title.toLowerCase().includes(search) ||
+        (task.description || '').toLowerCase().includes(search);
+
+      const matchesStatus =
+        filters.status === 'all' || task.status === filters.status;
+
+      const matchesPriority =
+        filters.priority === 'all' || task.priority === filters.priority;
+
       const matchesLabel =
-        filters.label === 'all' || (task.labels as string[] | undefined)?.includes(filters.label);
+        filters.label === 'all' ||
+        (task.labels as any[] | undefined)?.some(
+          (lb) => String((lb as any).id || (lb as any)._id) === filters.label,
+        );
+
       const matchesAssignee =
-        filters.assignee === 'all' || task.assignees?.includes(filters.assignee);
-      return matchesSearch && matchesStatus && matchesPriority && matchesLabel && matchesAssignee;
+        filters.assignee === 'all' ||
+        task.assignees?.some(
+          (a) => String((a as any).id || (a as any)._id || a) === filters.assignee,
+        );
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesPriority &&
+        matchesLabel &&
+        matchesAssignee
+      );
     });
   }, [filters, tasks]);
 
+  // ===================== STATS =====================
   const stats = useMemo(() => {
     const total = tasks.length;
     const inProgress = tasks.filter((task) => task.status === 'in_progress').length;
@@ -73,25 +135,69 @@ export default function TasksPage() {
     return { total, inProgress, done };
   }, [tasks]);
 
+  // ===================== HANDLERS =====================
+  // Khớp với Kanban: (taskId, updates) => void
   const handleTaskUpdate = (taskId: string, updates: Partial<Task>) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...updates } : task)));
+    // Optimistic update UI
+    setTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, ...updates } : task)),
+    );
     if (selectedTask?.id === taskId) {
       setSelectedTask((prev) => (prev ? { ...prev, ...updates } : prev));
     }
+
+    const payload: any = {};
+    if (typeof updates.status !== 'undefined') payload.status = updates.status;
+    if (typeof updates.priority !== 'undefined') payload.priority = updates.priority;
+    if (typeof updates.title !== 'undefined') payload.title = updates.title;
+    if (typeof updates.description !== 'undefined')
+      payload.description = updates.description;
+    if (typeof updates.dueDate !== 'undefined') payload.dueDate = updates.dueDate;
+    if (typeof (updates as any).project !== 'undefined')
+      payload.project = (updates as any).project;
+
+    if (Object.keys(payload).length === 0) return;
+
+    // Gọi API trong IIFE để function không là async (giữ type void)
+    (async () => {
+      try {
+        await taskServices.update(taskId, payload);
+      } catch (err: any) {
+        console.error(err);
+        message.error(
+          err?.response?.data || 'Cập nhật task thất bại — bảng sẽ được reload.',
+        );
+        handleReload();
+      }
+    })();
   };
 
+  // Khớp với Kanban: (taskId: string) => void
   const handleTaskDelete = (taskId: string) => {
     Modal.confirm({
       title: 'Xác nhận xóa',
-      content: 'xóa xong thì có thể reload để khôi phục',
-      onOk: () => setTasks((prev) => prev.filter((task) => task.id !== taskId)),
+      content: 'Task sẽ bị xoá (soft-delete ở backend nếu có).',
+      onOk: async () => {
+        try {
+          await taskServices.delete(taskId);
+          setTasks((prev) => prev.filter((task) => task.id !== taskId));
+          message.success('Đã xoá task');
+        } catch (err: any) {
+          console.error(err);
+          message.error(err?.response?.data || 'Xoá task thất bại');
+        }
+      },
     });
   };
 
+  // Khớp với Kanban: (status: Task['status']) => void | undefined
   const handleBlockedCreate = () => {
-    message.info('Vui lòng tạo task trong trang Project Detail để gắn với dự án cụ thể.');
+    message.info(
+      'Vui lòng tạo task trong trang Project Detail để gắn với dự án cụ thể.',
+    );
   };
 
+  // Khớp với Kanban: (task: Task) => void
   const openDetailModal = (task: Task) => {
     setSelectedTask(task);
     setIsDetailModalOpen(true);
@@ -104,11 +210,13 @@ export default function TasksPage() {
           <Title level={2} className="m-0">
             {t('tasks.title')}
           </Title>
-          <Text type="secondary">Mọi task đều phải thuộc một Project cụ thể.</Text>
+          <Text type="secondary">
+            Mọi task đều phải thuộc một Project cụ thể.
+          </Text>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => setTasks(mockTasks)}>
-            Reset Mock
+          <Button icon={<ReloadOutlined />} onClick={handleReload} loading={loading}>
+            Reload
           </Button>
           <Button
             type="primary"
@@ -121,41 +229,51 @@ export default function TasksPage() {
       </div>
 
       <Row gutter={[16, 16]}>
+        {/* Sidebar filters */}
         <Col xs={24} lg={6}>
           <Space direction="vertical" className="w-full">
             <Card title="Bộ lọc">
               <Space direction="vertical" className="w-full">
-            <Input
+                <Input
                   placeholder="Tìm tiêu đề hoặc mô tả..."
-              prefix={<SearchOutlined />}
-              value={filters.search}
+                  prefix={<SearchOutlined />}
+                  value={filters.search}
                   onChange={(event) =>
                     setFilters((prev) => ({ ...prev, search: event.target.value }))
                   }
-            />
-            <Select
-              value={filters.status}
-                  onChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
-            >
+                />
+
+                <Select
+                  value={filters.status}
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, status: value }))
+                  }
+                >
                   <Option value="all">Tất cả trạng thái</Option>
                   <Option value="backlog">Backlog</Option>
-              <Option value="todo">Cần làm</Option>
-              <Option value="in_progress">Đang làm</Option>
-              <Option value="done">Hoàn thành</Option>
-            </Select>
-            <Select
-              value={filters.priority}
-                  onChange={(value) => setFilters((prev) => ({ ...prev, priority: value }))}
-            >
+                  <Option value="todo">Cần làm</Option>
+                  <Option value="in_progress">Đang làm</Option>
+                  <Option value="done">Hoàn thành</Option>
+                </Select>
+
+                <Select
+                  value={filters.priority}
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, priority: value }))
+                  }
+                >
                   <Option value="all">Mọi ưu tiên</Option>
                   <Option value="low">Thấp</Option>
                   <Option value="normal">Bình thường</Option>
                   <Option value="high">Cao</Option>
                   <Option value="urgent">Khẩn cấp</Option>
                 </Select>
+
                 <Select
                   value={filters.label}
-                  onChange={(value) => setFilters((prev) => ({ ...prev, label: value }))}
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, label: value }))
+                  }
                 >
                   <Option value="all">Tất cả label</Option>
                   {mockLabels.map((label) => (
@@ -164,9 +282,12 @@ export default function TasksPage() {
                     </Option>
                   ))}
                 </Select>
+
                 <Select
                   value={filters.assignee}
-                  onChange={(value) => setFilters((prev) => ({ ...prev, assignee: value }))}
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, assignee: value }))
+                  }
                 >
                   <Option value="all">Mọi người phụ trách</Option>
                   {mockUsers.map((user) => (
@@ -177,11 +298,12 @@ export default function TasksPage() {
                 </Select>
               </Space>
             </Card>
+
             <Card title="AI status" extra={<FilterOutlined />}>
               <List
                 dataSource={[
                   'AI đề xuất gom task UI',
-                  'Cần ước lượng lại task ',
+                  'Cần ước lượng lại task',
                   'Đang thu thập báo cáo',
                 ]}
                 renderItem={(item) => (
@@ -193,13 +315,16 @@ export default function TasksPage() {
             </Card>
           </Space>
         </Col>
+
+        {/* Kanban + stats */}
         <Col xs={24} lg={18}>
           <Alert
             type="info"
             showIcon
             className="mb-4"
-            message="Không thể tạo task trực tiếp ở bảng này. Vui lòng mở một Project, tạo task rồi chia nhỏ subtask."
+            message="Task được tạo trong Project Detail. Ở đây chỉ là bảng tổng quan & drag-drop."
           />
+
           <Row gutter={[16, 16]}>
             <Col xs={24} md={8}>
               <Card>
@@ -230,6 +355,7 @@ export default function TasksPage() {
         </Col>
       </Row>
 
+      {/* Modal xem nhanh task */}
       <Modal
         title="Xem nhanh task"
         open={isDetailModalOpen}
@@ -237,17 +363,18 @@ export default function TasksPage() {
         footer={
           <Space>
             <Button onClick={() => setIsDetailModalOpen(false)}>Đóng</Button>
-              <Button 
-                type="primary" 
+            <Button
+              type="primary"
               icon={<EyeOutlined />}
               onClick={() => {
                 if (selectedTask) {
+                  // nếu BE dùng _id thì ở đây selectedTask.id đã normalize rồi
                   navigate(`/tasks/${selectedTask.id}`);
                 }
               }}
-              >
+            >
               Mở trang Task Detail
-              </Button>
+            </Button>
           </Space>
         }
         width={520}
@@ -258,30 +385,33 @@ export default function TasksPage() {
               <Text strong>{selectedTask.title}</Text>
               <div className="text-sm text-gray-500">{selectedTask.description}</div>
             </div>
+
             <div className="flex flex-wrap gap-2">
               <Tag color="blue">{selectedTask.status}</Tag>
-              <Tag color="orange">{selectedTask.priority}</Tag>
+              <Tag color="orange">{selectedTask.priority || 'normal'}</Tag>
             </div>
-            <Divider className="my-2" />
-            <Space direction="vertical" className="w-full">
-              <Text type="secondary" className="text-xs">
+
+            <div className="mt-2">
+              <Text type="secondary" className="text-xs block mb-1">
                 Assignees
               </Text>
               <Avatar.Group>
                 {selectedTask.assignees?.map((assignee) => {
-                  const user = mockUsers.find((u) => u.id === assignee);
+                  const id = String((assignee as any).id || (assignee as any)._id || assignee);
+                  const user = mockUsers.find((u) => u.id === id);
                   return (
-                    <Tooltip key={assignee} title={user?.name}>
+                    <Tooltip key={id} title={user?.name}>
                       <Avatar src={user?.avatarUrl}>{user?.name?.[0]}</Avatar>
                     </Tooltip>
                   );
                 })}
               </Avatar.Group>
-              <Text type="secondary" className="text-xs">
+
+              <Text type="secondary" className="text-xs block mt-3 mb-1">
                 Thuộc sprint
               </Text>
               <Tag>{mockSprints[0].name}</Tag>
-            </Space>
+            </div>
           </Space>
         ) : (
           <Text>Chưa chọn task nào</Text>
