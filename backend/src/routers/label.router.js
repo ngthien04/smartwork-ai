@@ -1,3 +1,4 @@
+// src/routers/label.router.js
 import { Router } from 'express';
 import mongoose from 'mongoose';
 
@@ -12,6 +13,8 @@ const router = Router();
 const handler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
+const toId = (v) => new mongoose.Types.ObjectId(String(v));
+
 async function recordActivity({ team, actor, verb, targetType, targetId, metadata }) {
   try {
     await ActivityModel.create({ team, actor, verb, targetType, targetId, metadata });
@@ -19,16 +22,17 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
 }
 
 // GET /api/labels
-// Query: team (bắt buộc), q (search by name), page, limit, sort
+// Query: team (bắt buộc), project?, q, page, limit, sort
 router.get(
   '/',
   authMid,
   handler(async (req, res) => {
-    const { team, q, page = 1, limit = 20, sort = 'name' } = req.query;
+    const { team, project, q, page = 1, limit = 20, sort = 'name' } = req.query;
 
     if (!team) return res.status(BAD_REQUEST).send('Missing team');
 
-    const filter = { team: new mongoose.Types.ObjectId(String(team)) };
+    const filter = { team: toId(team) };
+    if (project) filter.project = toId(project);
     if (q) filter.name = { $regex: String(q), $options: 'i' };
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -44,7 +48,7 @@ router.get(
       total,
       items,
     });
-  })
+  }),
 );
 
 // GET /api/labels/:labelId
@@ -60,16 +64,29 @@ router.get(
 );
 
 // POST /api/labels  (admin)
-// body: { team, name, color? }
+// body: { team, project?, name, color?, description? }
 router.post(
   '/',
-  adminMid,
+  authMid,
   handler(async (req, res) => {
-    const { team, name, color = '#cccccc' } = req.body || {};
+    const {
+      team,
+      project,
+      name,
+      color = '#cccccc',
+      description,
+    } = req.body || {};
     if (!team || !name) return res.status(BAD_REQUEST).send('Thiếu team/name');
 
     try {
-      const label = await LabelModel.create({ team, name: name.trim(), color });
+      const label = await LabelModel.create({
+        team: toId(team),
+        project: project ? toId(project) : undefined,
+        name: String(name).trim(),
+        color,
+        description,
+      });
+
       await recordActivity({
         team: label.team,
         actor: req.user.id,
@@ -80,27 +97,27 @@ router.post(
       });
       return res.status(201).send(label);
     } catch (e) {
-      // duplicate key (unique team+name)
       if (e?.code === 11000) {
-        return res.status(BAD_REQUEST).send('Label đã tồn tại trong team này');
+        return res.status(BAD_REQUEST).send('Label đã tồn tại trong team (và project) này');
       }
       throw e;
     }
-  })
+  }),
 );
 
 // PUT /api/labels/:labelId  (admin)
-// body: { name?, color? }
+// body: { name?, color?, description? }
 router.put(
   '/:labelId',
-  adminMid,
+  authMid,
   handler(async (req, res) => {
     const { labelId } = req.params;
-    const { name, color } = req.body || {};
+    const { name, color, description } = req.body || {};
 
     const updates = {};
     if (typeof name !== 'undefined') updates.name = String(name).trim();
     if (typeof color !== 'undefined') updates.color = String(color);
+    if (typeof description !== 'undefined') updates.description = String(description);
 
     try {
       const before = await LabelModel.findById(labelId);
@@ -121,19 +138,20 @@ router.put(
       return res.send(after);
     } catch (e) {
       if (e?.code === 11000) {
-        return res.status(BAD_REQUEST).send('Tên label đã tồn tại trong team này');
+        return res.status(BAD_REQUEST).send('Tên label đã tồn tại trong team (và project) này');
       }
       throw e;
     }
-  })
+  }),
 );
+
 
 // DELETE /api/labels/:labelId  (admin)
 // - Xoá nhãn: KHÔNG xoá khỏi task ở đây để an toàn (tuỳ policy).
 //   Bạn có thể viết thêm job gỡ label khỏi Task nếu cần.
 router.delete(
   '/:labelId',
-  adminMid,
+  authMid,
   handler(async (req, res) => {
     const { labelId } = req.params;
 

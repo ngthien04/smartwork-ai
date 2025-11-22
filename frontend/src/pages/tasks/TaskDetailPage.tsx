@@ -39,8 +39,8 @@ import projectServices from '@/services/projectService';
 import subtaskServices from '@/services/subtaskServices';
 import commentServices from '@/services/commentServices';
 import activityServices from '@/services/activityServices';
+import labelServices, { type Label } from '@/services/labelServices';
 
-import { useAuth } from '@/hooks/useAuth';
 import type { Subtask } from '@/types/subtask';
 import type { Comment } from '@/types/comment';
 import type { Activity } from '@/types/activity';
@@ -79,8 +79,14 @@ export default function TaskDetailPage() {
   const [subtaskFile, setSubtaskFile] = useState<RcFile | null>(null);
   const [editingSubtask, setEditingSubtask] = useState<Subtask | null>(null);
 
-  const { user } = useAuth();
-  const currentUserId = (user as any)?._id || (user as any)?.id;
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [labelsLoading, setLabelsLoading] = useState(false);
+
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [labelForm] = Form.useForm();
+  const [editingLabel, setEditingLabel] = useState<Label | null>(null);
+  const [savingLabel, setSavingLabel] = useState(false);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -184,8 +190,34 @@ export default function TaskDetailPage() {
         .catch((err) => console.error(err));
     }, 5000); // mỗi 5s
 
-    return () => clearInterval(interval); // cleanup khi unmount
+    return () => clearInterval(interval); 
   }, [task?.id]);
+
+  useEffect(() => {
+    const loadLabels = async () => {
+      if (!project) return;
+      const team = project.team;
+      const teamId = typeof team === 'string' ? team : team?._id;
+      if (!teamId) return;
+
+      try {
+        setLabelsLoading(true);
+        const res = await labelServices.list({
+          team: teamId,
+          project: project._id || project.id,
+          limit: 200,
+        });
+        setLabels(res.data.items || res.data || []);
+      } catch (e: any) {
+        console.error(e);
+        message.error(e?.response?.data || 'Không tải được nhãn');
+      } finally {
+        setLabelsLoading(false);
+      }
+    };
+
+    loadLabels();
+  }, [project]);
 
   const assignees = useMemo(() => {
     if (!task?.assignees) return [];
@@ -203,38 +235,6 @@ export default function TaskDetailPage() {
     return Math.round((doneCount / subtasks.length) * 100);
   }, [subtasks]);
 
-  const checklistReport = useMemo(
-    () => {
-      const total = subtasks.length;
-      const doneCount = subtasks.filter((s) => s.isDone).length;
-      const noAssigneeCount = subtasks.filter((s) => !s.assignee).length;
-
-      return [
-        {
-          id: 'ck-total',
-          label: `Tổng số subtask: ${total}`,
-          done: total > 0,
-        },
-        {
-          id: 'ck-done',
-          label: `Đã hoàn thành ${doneCount}/${total} subtask`,
-          done: total > 0 && doneCount === total,
-        },
-        {
-          id: 'ck-no-assignee',
-          label: `Tất cả subtask đã có assignee (còn ${noAssigneeCount} subtask chưa có)`,
-          done: total > 0 && noAssigneeCount === 0,
-        },
-        {
-          id: 'ck-progress',
-          label: `Tiến độ subtask ≥ 50% (hiện tại ${total ? Math.round((doneCount / total) * 100) : 0}%)`,
-          done: total > 0 && doneCount / Math.max(total, 1) >= 0.5,
-        },
-      ];
-    },
-    [subtasks],
-  );
-
   const reloadTaskAttachments = async (id: string) => {
     const res = await taskServices.getById(id);
     const t: any = res.data || res;
@@ -243,29 +243,6 @@ export default function TaskDetailPage() {
     setAttachments((t.attachments as TaskAttachment[]) || []);
   };
 
-  const handleUploadFile = async (file: RcFile) => {
-    if (!task?.id && !task?._id) {
-      message.error('Task chưa sẵn sàng');
-      return false;
-    }
-    const id = task.id || task._id;
-
-    try {
-      setUploading(true);
-      await taskServices.uploadAttachment(id, file, {
-        folder: 'smartwork/attachments',
-      });
-      message.success('Tải tệp lên thành công');
-      await reloadTaskAttachments(id);
-    } catch (err: any) {
-      console.error(err);
-      message.error(err?.response?.data || 'Upload tệp thất bại');
-    } finally {
-      setUploading(false);
-    }
-
-    return false;
-  };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!task?.id && !task?._id) return;
@@ -281,27 +258,6 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleCreateSubtask = async () => {
-    if (!newSubtaskTitle.trim()) return;
-    if (!task?.id && !task?._id) return;
-    const id = task.id || task._id;
-
-    try {
-      setCreatingSubtask(true);
-      const res = await subtaskServices.create({
-        parentTask: id,
-        title: newSubtaskTitle.trim(),
-      });
-      const sub = res.data || res;
-      setSubtasks((prev) => [...prev, sub]);
-      setNewSubtaskTitle('');
-    } catch (err: any) {
-      console.error(err);
-      message.error(err?.response?.data || 'Tạo subtask thất bại');
-    } finally {
-      setCreatingSubtask(false);
-    }
-  };
 
   const handleToggleSubtask = async (subtask: Subtask) => {
     try {
@@ -498,6 +454,39 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleToggleLabelOnTask = async (labelId: string) => {
+    if (!task?.id && !task?._id) return;
+    const id = task.id || task._id;
+
+    const currentIds: string[] =
+      (task.labels as any[] | undefined)?.map((l: any) =>
+        String(l?._id || l?.id || l),
+      ) || [];
+
+    let nextIds: string[];
+    if (currentIds.includes(labelId)) {
+      nextIds = currentIds.filter((x) => x !== labelId);
+    } else {
+      nextIds = [...currentIds, labelId];
+    }
+
+    try {
+      await taskServices.setLabels(id, nextIds);
+
+      // Cập nhật local task.labels dưới dạng object Label đầy đủ
+      const nextLabelObjs = labels.filter((lb) => nextIds.includes(lb._id));
+
+      setTask((prev: any) =>
+        prev ? { ...prev, labels: nextLabelObjs } : prev,
+      );
+
+      message.success('Đã cập nhật nhãn của task');
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data || 'Cập nhật nhãn thất bại');
+    }
+  };
+
   const activityItems = useMemo(() => {
     if (!activities.length) return [];
     return activities.map((a) => {
@@ -570,23 +559,53 @@ export default function TaskDetailPage() {
                   </Tag>
                 ))}
               </div>
+              <Divider />
 
-              {task.labels && (task.labels as any[]).length > 0 && (
-                <>
-                  <Divider />
-                  <div className="flex flex-wrap gap-2">
-                    {(task.labels as any[]).map((label) => (
-                      <Tag
-                        key={label._id || label.id}
-                        color={label.color || 'default'}
-                      >
-                        {label.name}
-                      </Tag>
-                    ))}
-                  </div>
-                </>
-              )}
+              <div>
+                <Space className="mb-2">
+                  <Text type="secondary" className="text-xs">
+                    Nhãn
+                  </Text>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => {
+                      setEditingLabel(null);
+                      labelForm.resetFields();
+                      setLabelModalOpen(true);
+                    }}
+                  >
+                    Quản lý nhãn
+                  </Button>
+                </Space>
+                  <Space wrap>
+                    {(!task.labels || (task.labels as any[]).length === 0) && (
+                      <Text type="secondary" className="text-xs">
+                        Task này chưa có nhãn nào.
+                      </Text>
+                    )}
 
+                    {(task.labels as any[] || []).map((raw: any) => {
+                      const lb =
+                        typeof raw === 'string'
+                          ? labels.find((x) => String(x._id) === String(raw))
+                          : raw;
+
+                      if (!lb) return null;
+
+                      return (
+                        <Tag
+                          key={lb._id}
+                          color={lb.color || 'default'}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => handleToggleLabelOnTask(lb._id)}
+                        >
+                          {lb.name}
+                        </Tag>
+                      );
+                    })}
+                  </Space>
+              </div>
               <Divider />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -695,6 +714,166 @@ export default function TaskDetailPage() {
           </Card>
 
           <Row gutter={[16, 25]} className="mt-4">
+            <Modal
+                open={labelModalOpen}
+                title={editingLabel ? 'Sửa nhãn' : 'Quản lý nhãn'}
+                onCancel={() => {
+                  setLabelModalOpen(false);
+                  setEditingLabel(null);
+                  labelForm.resetFields();
+                }}
+                onOk={async () => {
+                  try {
+                    const values = await labelForm.validateFields();
+                    setSavingLabel(true);
+
+                    const team = project?.team;
+                    const teamId = typeof team === 'string' ? team : team?._id;
+
+                    if (!teamId) {
+                      message.error('Project không có team, không thể lưu nhãn');
+                      return;
+                    }
+
+                    if (editingLabel) {
+                      const res = await labelServices.update(editingLabel._id, {
+                        name: values.name,
+                        color: values.color,
+                        description: values.description,
+                      });
+                      const updated = res.data || res;
+                      setLabels((prev) =>
+                        prev.map((lb) => (lb._id === updated._id ? updated : lb)),
+                      );
+                      message.success('Đã cập nhật nhãn');
+                    } else {
+                      const res = await labelServices.create({
+                        team: teamId,
+                        project: project?._id || project?.id,
+                        name: values.name,
+                        color: values.color,
+                        description: values.description,
+                      });
+                      const created = res.data || res;
+                      setLabels((prev) => [...prev, created]);
+                      message.success('Đã tạo nhãn mới');
+                    }
+
+                    labelForm.resetFields();
+                    setEditingLabel(null);
+                    setLabelModalOpen(false);
+                  } catch (err: any) {
+                    if (err?.response?.data) message.error(err.response.data);
+                    else if (!err?.errorFields) message.error('Lưu nhãn thất bại');
+                  } finally {
+                    setSavingLabel(false);
+                  }
+                }}
+                confirmLoading={savingLabel}
+                okText={editingLabel ? 'Lưu nhãn' : 'Tạo nhãn'}
+              >
+                <Row gutter={[16, 16]}>
+                  <Col span={12}>
+                    <Form form={labelForm} layout="vertical">
+                      <Form.Item
+                        name="name"
+                        label="Tên nhãn"
+                        rules={[{ required: true, message: 'Nhập tên nhãn' }]}
+                      >
+                        <Input placeholder="VD: Bug, Feature, Urgent..." />
+                      </Form.Item>
+                      <Form.Item name="color" label="Màu (hex)">
+                        <input
+                          type="color"
+                          value={labelForm.getFieldValue('color') || '#52c41a'}
+                          onChange={(e) => {
+                            labelForm.setFieldsValue({ color: e.target.value });
+                          }}
+                          style={{ width: '100%', height: 32, border: 'none', padding: 0, cursor: 'pointer' }}
+                        />
+                      </Form.Item>
+                      <Form.Item name="description" label="Mô tả">
+                        <Input.TextArea rows={3} placeholder="Nhãn dùng cho loại công việc nào..." />
+                      </Form.Item>
+                    </Form>
+                  </Col>
+                  <Col span={12}>
+                    <Text strong className="block mb-2">
+                      Danh sách nhãn
+                    </Text>
+                    <List
+                      size="small"
+                      bordered
+                      dataSource={labels}
+                      locale={{ emptyText: 'Chưa có nhãn' }}
+                      renderItem={(lb) => (
+                        <List.Item
+                          actions={[
+                            <Button
+                              key="edit"
+                              type="link"
+                              size="small"
+                              onClick={() => {
+                                setEditingLabel(lb);
+                                labelForm.setFieldsValue({
+                                  name: lb.name,
+                                  color: lb.color,
+                                  description: lb.description,
+                                });
+                              }}
+                            >
+                              Sửa
+                            </Button>,
+                            <Popconfirm
+                              key="delete"
+                              title="Xoá nhãn này?"
+                              okText="Xoá"
+                              cancelText="Huỷ"
+                              onConfirm={async () => {
+                                try {
+                                  await labelServices.remove(lb._id);
+                                  setLabels((prev) =>
+                                    prev.filter((x) => x._id !== lb._id),
+                                  );
+
+                                  // Nếu task đang gắn nhãn này thì bỏ ra
+                                  setTask((prev: any) => {
+                                    if (!prev?.labels) return prev;
+                                    const next = (prev.labels as any[]).filter(
+                                      (l: any) =>
+                                        String(l?._id || l?.id || l) !== String(lb._id),
+                                    );
+                                    return { ...prev, labels: next };
+                                  });
+
+                                  message.success('Đã xoá nhãn');
+                                } catch (err: any) {
+                                  console.error(err);
+                                  message.error(err?.response?.data || 'Xoá nhãn thất bại');
+                                }
+                              }}
+                            >
+                              <Button type="link" danger size="small">
+                                Xoá
+                              </Button>
+                            </Popconfirm>,
+                          ]}
+                        >
+                          <Space direction="vertical" size={0}>
+                            <Tag color={lb.color || 'default'}>{lb.name}</Tag>
+                            {lb.description && (
+                              <Text type="secondary" className="text-xs">
+                                {lb.description}
+                              </Text>
+                            )}
+                          </Space>
+                        </List.Item>
+                      )}
+                    />
+                  </Col>
+                </Row>
+              </Modal>
+
             <Modal
               title={editingSubtask ? 'Sửa subtask' : 'Tạo subtask mới'}
               open={subtaskModalOpen}

@@ -11,7 +11,6 @@ import type { User } from "./user";
 import type { Sprint } from "./sprint";
 import type { AIInsight } from "./ai";
 
-// Forward type declarations
 export interface Label {
   _id?: ID;
   id: ID;
@@ -73,7 +72,7 @@ export interface Task {
   id: ID;
   team: ID | Team;
   project?: ID | Project;
-  sprint?: ID | Sprint;
+  sprint?: ID | Sprint | null;
   title: string;
   description?: string;
   type?: TaskType;

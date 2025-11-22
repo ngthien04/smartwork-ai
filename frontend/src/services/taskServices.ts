@@ -1,23 +1,23 @@
-// src/services/taskServices.ts
 import api from './api';
 import type { RcFile } from 'antd/es/upload/interface';
+import type { Label } from './labelServices';
 
-// Các params filter khi list task
+
+export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'done';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
 export interface TaskListParams {
   team?: string;
   project?: string;
-  sprint?: string;
+  sprint?: string | null;
   assignee?: string;
   status?: string;   // ví dụ: "todo,in_progress"
   priority?: string; // ví dụ: "high,urgent"
   q?: string;
   page?: number;
   limit?: number;
-  sort?: string;     // mặc định backend: -createdAt
+  sort?: string;     
 }
-
-export type TaskStatus = 'backlog' | 'todo' | 'in_progress' | 'done';
-export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 // ---- Attachment type (map với AttachmentModel) ----
 export interface AttachmentStorage {
@@ -26,23 +26,23 @@ export interface AttachmentStorage {
   url?: string;
 }
 
-// thêm gần đầu file
 export interface UploadAttachmentOptions {
   folder?: string;
   filename?: string;
-  subtaskId?: string;  // 🌟 thêm field này
+  subtaskId?: string;  // để gắn file vào 1 subtask cụ thể
 }
-
 
 export interface Attachment {
   _id: string;
   task: string;
-  uploadedBy: string | {
-    _id: string;
-    name: string;
-    email?: string;
-    avatarUrl?: string;
-  };
+  uploadedBy:
+    | string
+    | {
+        _id: string;
+        name: string;
+        email?: string;
+        avatarUrl?: string;
+      };
   name: string;
   mimeType?: string;
   size?: number;
@@ -51,32 +51,33 @@ export interface Attachment {
   updatedAt?: string;
 }
 
-// Shape cơ bản cho task backend trả về
+// Task trả về từ API (bản đơn giản, không cố gắng ôm hết types global)
 export interface Task {
   _id: string;
   team: string;
   project?: string | any;
-  sprint?: string | any;
+  sprint?: string | any | null;
   title: string;
   description?: string;
   status: TaskStatus;
   priority: TaskPriority;
   assignees?: any[];
-  labels?: any[];
+  labels?: Array<string | Label>;
   dueDate?: string;
   startDate?: string;
   estimate?: number;
   storyPoints?: number;
-  attachments?: Attachment[]; // <--- THÊM
+  attachments?: Attachment[];
   createdAt: string;
   updatedAt: string;
 }
 
-// Payload tạo task
+// =============== PAYLOAD TẠO / SỬA TASK ===============
+
 export interface CreateTaskPayload {
   team: string;
   project?: string;
-  sprint?: string;
+  sprint?: string | null; 
   title: string;
   description?: string;
   type?: string;
@@ -90,7 +91,6 @@ export interface CreateTaskPayload {
   storyPoints?: number;
 }
 
-// update chung
 export interface UpdateTaskPayload {
   title?: string;
   description?: string;
@@ -98,7 +98,7 @@ export interface UpdateTaskPayload {
   status?: TaskStatus;
   priority?: TaskPriority;
   project?: string;
-  sprint?: string;
+  sprint?: string | null;
   assignees?: string[];
   labels?: string[];
   dueDate?: string;
@@ -109,11 +109,15 @@ export interface UpdateTaskPayload {
   ai?: any;
 }
 
+// =============== RESPONSE STATS ===============
+
 export interface TaskOverviewResponse {
   byStatus: Array<{ _id: TaskStatus; count: number }>;
   byAssignee: Array<{ _id: string | null; count: number }>;
   overdue: number;
 }
+
+// =============== SERVICE ===============
 
 const taskServices = {
   // GET /api/tasks
@@ -155,11 +159,12 @@ const taskServices = {
   },
 
   // GET /api/tasks/stats/overview
-  getOverview(params: { team: string; project?: string; sprint?: string }) {
+  getOverview(params: { team: string; project?: string; sprint?: string | null }) {
     return api.get<TaskOverviewResponse>('/tasks/stats/overview', { params });
   },
 
   // ========= ATTACHMENTS =========
+
   // POST /api/tasks/:taskId/attachments/upload (Cloudinary)
   uploadAttachment(
     taskId: string,
@@ -176,7 +181,7 @@ const taskServices = {
       formData.append('filename', options.filename);
     }
     if (options.subtaskId) {
-      formData.append('subtaskId', options.subtaskId); // 🌟 cái này quan trọng
+      formData.append('subtaskId', options.subtaskId);
     }
 
     return api.post(`/tasks/${taskId}/attachments/upload`, formData, {
@@ -185,18 +190,25 @@ const taskServices = {
   },
 
   // (Optional) POST /api/tasks/:taskId/attachments - nếu muốn tạo metadata thủ công
-  createAttachment(taskId: string, payload: {
-    name: string;
-    mimeType?: string;
-    size?: number;
-    storage?: any;
-  }) {
+  createAttachment(
+    taskId: string,
+    payload: {
+      name: string;
+      mimeType?: string;
+      size?: number;
+      storage?: any;
+    },
+  ) {
     return api.post(`/tasks/${taskId}/attachments`, payload);
   },
 
   // DELETE /api/tasks/:taskId/attachments/:attachmentId
   deleteAttachment(taskId: string, attachmentId: string) {
     return api.delete(`/tasks/${taskId}/attachments/${attachmentId}`);
+  },
+
+  setLabels(taskId: string, labelIds: string[]) {
+    return api.post(`/tasks/${taskId}/labels`, { labels: labelIds });
   },
 };
 

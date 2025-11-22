@@ -226,6 +226,9 @@ router.get(
         .skip(skip)
         .limit(limitNum)
         .populate('project', 'name key')
+        .populate('sprint', 'name status startDate endDate')
+        .populate('assignees', 'name email avatarUrl')
+        .populate('labels')
         .lean(),
       TaskModel.countDocuments(filter),
     ]);
@@ -307,7 +310,6 @@ router.post(
       status = 'todo',
       priority = 'normal',
       assignees = [],
-      labels = [],
       dueDate,
       startDate,
       estimate,
@@ -317,6 +319,36 @@ router.post(
     if (!team || !title)
       return res.status(BAD_REQUEST).send('Thiếu team/title');
 
+    // ----- NORMALIZE labels -----
+    let rawLabels = req.body?.labels ?? [];
+
+    // Nếu FE gửi string (kiểu "[ 'T ', 'D ', ... ]")
+    if (typeof rawLabels === 'string') {
+      // thử parse JSON trước
+      try {
+        const parsed = JSON.parse(rawLabels);
+        rawLabels = parsed;
+      } catch {
+        // fallback: tách theo dấu phẩy / khoảng trắng
+        rawLabels = rawLabels
+          .replace(/[\[\]'"]/g, '') // bỏ [, ], ', "
+          .split(/[, ]+/)
+          .filter(Boolean);
+      }
+    }
+
+    // Nếu không phải array thì wrap lại
+    if (!Array.isArray(rawLabels)) {
+      rawLabels = [rawLabels];
+    }
+
+    // Lọc & convert sang ObjectId hợp lệ
+    const labels = rawLabels
+      .map((v) => String(v).trim())
+      .filter((id) => mongoose.isValidObjectId(id))        // CHỈ giữ id hợp lệ
+      .map((id) => new mongoose.Types.ObjectId(id));
+
+    // ----- Tạo task -----
     const doc = await TaskModel.create({
       team,
       project,
@@ -369,6 +401,7 @@ router.post(
     res.status(201).send(doc);
   }),
 );
+
 
 // ===================================================================
 // PUT /api/tasks/:taskId  (update general fields)

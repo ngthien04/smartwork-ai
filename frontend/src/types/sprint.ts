@@ -1,17 +1,14 @@
-import type { ID, SprintStatus } from "./common";
-import type { Team } from "./team";
-import type { Project } from "./project";
+export type SprintStatus = 'planned' | 'active' | 'completed' | 'cancelled';
 
 export interface Sprint {
-  _id?: ID;
-  id: ID;
-  team?: ID | Team;
-  project: ID | Project;
+  _id: string;
+  team: string | { _id: string; name: string };
+  project: string | { _id: string; name: string; key?: string };
   name: string;
   goal?: string;
   startDate?: string;
   endDate?: string;
-  status?: SprintStatus;
+  status: SprintStatus;
   createdAt?: string;
   updatedAt?: string;
 }

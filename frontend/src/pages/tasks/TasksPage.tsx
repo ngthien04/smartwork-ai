@@ -18,7 +18,6 @@ import {
   Alert,
 } from 'antd';
 import {
-  PlusOutlined,
   SearchOutlined,
   FilterOutlined,
   EyeOutlined,
@@ -30,8 +29,7 @@ import { useNavigate } from 'react-router-dom';
 
 import Kanban from '@/components/tasks/Kanban';
 import taskServices from '@/services/taskServices';
-import { mockLabels, mockSprints, mockUsers } from '@/data/mockData';
-import type { Task } from '@/types'; // <-- QUAN TRỌNG: giống Kanban
+import type { Task } from '@/types'; // giống Kanban
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -40,8 +38,14 @@ type Filters = {
   search: string;
   status: 'all' | 'backlog' | 'todo' | 'in_progress' | 'done';
   priority: 'all' | 'low' | 'normal' | 'high' | 'urgent';
-  label: 'all' | string;
   assignee: 'all' | string;
+};
+
+// kiểu đơn giản cho assignee option
+type AssigneeOption = {
+  id: string;
+  name: string;
+  avatarUrl?: string;
 };
 
 export default function TasksPage() {
@@ -55,7 +59,6 @@ export default function TasksPage() {
     search: '',
     status: 'all',
     priority: 'all',
-    label: 'all',
     assignee: 'all',
   });
 
@@ -71,7 +74,7 @@ export default function TasksPage() {
 
       const mapped: Task[] = raw.map((t: any) => ({
         ...t,
-        id: t.id || t._id, // normalize cho Kanban
+        id: (t as any).id || (t as any)._id, // normalize cho Kanban
       }));
 
       setTasks(mapped);
@@ -91,6 +94,25 @@ export default function TasksPage() {
     fetchTasks();
   };
 
+  // ===================== BUILD ASSIGNEE OPTIONS TỪ TASK THẬT =====================
+  const assigneeOptions: AssigneeOption[] = useMemo(() => {
+    const map = new Map<string, AssigneeOption>();
+
+    tasks.forEach((task) => {
+      (task.assignees || []).forEach((a: any) => {
+        const id = String(a?._id || a?.id || a);
+        const name = a?.name || a?.email || id;
+        const avatarUrl = a?.avatarUrl;
+
+        if (!map.has(id)) {
+          map.set(id, { id, name, avatarUrl });
+        }
+      });
+    });
+
+    return Array.from(map.values());
+  }, [tasks]);
+
   // ===================== FILTER CLIENT =====================
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -105,23 +127,17 @@ export default function TasksPage() {
       const matchesPriority =
         filters.priority === 'all' || task.priority === filters.priority;
 
-      const matchesLabel =
-        filters.label === 'all' ||
-        (task.labels as any[] | undefined)?.some(
-          (lb) => String((lb as any).id || (lb as any)._id) === filters.label,
-        );
-
       const matchesAssignee =
         filters.assignee === 'all' ||
         task.assignees?.some(
-          (a) => String((a as any).id || (a as any)._id || a) === filters.assignee,
+          (a) =>
+            String((a as any).id || (a as any)._id || a) === filters.assignee,
         );
 
       return (
         matchesSearch &&
         matchesStatus &&
         matchesPriority &&
-        matchesLabel &&
         matchesAssignee
       );
     });
@@ -136,7 +152,6 @@ export default function TasksPage() {
   }, [tasks]);
 
   // ===================== HANDLERS =====================
-  // Khớp với Kanban: (taskId, updates) => void
   const handleTaskUpdate = (taskId: string, updates: Partial<Task>) => {
     // Optimistic update UI
     setTasks((prev) =>
@@ -158,7 +173,6 @@ export default function TasksPage() {
 
     if (Object.keys(payload).length === 0) return;
 
-    // Gọi API trong IIFE để function không là async (giữ type void)
     (async () => {
       try {
         await taskServices.update(taskId, payload);
@@ -172,7 +186,6 @@ export default function TasksPage() {
     })();
   };
 
-  // Khớp với Kanban: (taskId: string) => void
   const handleTaskDelete = (taskId: string) => {
     Modal.confirm({
       title: 'Xác nhận xóa',
@@ -190,14 +203,12 @@ export default function TasksPage() {
     });
   };
 
-  // Khớp với Kanban: (status: Task['status']) => void | undefined
   const handleBlockedCreate = () => {
     message.info(
       'Vui lòng tạo task trong trang Project Detail để gắn với dự án cụ thể.',
     );
   };
 
-  // Khớp với Kanban: (task: Task) => void
   const openDetailModal = (task: Task) => {
     setSelectedTask(task);
     setIsDetailModalOpen(true);
@@ -269,28 +280,17 @@ export default function TasksPage() {
                   <Option value="urgent">Khẩn cấp</Option>
                 </Select>
 
-                <Select
-                  value={filters.label}
-                  onChange={(value) =>
-                    setFilters((prev) => ({ ...prev, label: value }))
-                  }
-                >
-                  <Option value="all">Tất cả label</Option>
-                  {mockLabels.map((label) => (
-                    <Option key={label.id} value={label.id}>
-                      {label.name}
-                    </Option>
-                  ))}
-                </Select>
-
+                {/* Bỏ filter label, chỉ còn filter assignee bằng user thật */}
                 <Select
                   value={filters.assignee}
                   onChange={(value) =>
                     setFilters((prev) => ({ ...prev, assignee: value }))
                   }
+                  placeholder="Lọc theo người phụ trách"
+                  allowClear={false}
                 >
                   <Option value="all">Mọi người phụ trách</Option>
-                  {mockUsers.map((user) => (
+                  {assigneeOptions.map((user) => (
                     <Option key={user.id} value={user.id}>
                       {user.name}
                     </Option>
@@ -368,7 +368,6 @@ export default function TasksPage() {
               icon={<EyeOutlined />}
               onClick={() => {
                 if (selectedTask) {
-                  // nếu BE dùng _id thì ở đây selectedTask.id đã normalize rồi
                   navigate(`/tasks/${selectedTask.id}`);
                 }
               }}
@@ -383,7 +382,9 @@ export default function TasksPage() {
           <Space direction="vertical" className="w-full">
             <div>
               <Text strong>{selectedTask.title}</Text>
-              <div className="text-sm text-gray-500">{selectedTask.description}</div>
+              <div className="text-sm text-gray-500">
+                {selectedTask.description}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -397,11 +398,14 @@ export default function TasksPage() {
               </Text>
               <Avatar.Group>
                 {selectedTask.assignees?.map((assignee) => {
-                  const id = String((assignee as any).id || (assignee as any)._id || assignee);
-                  const user = mockUsers.find((u) => u.id === id);
+                  const a: any = assignee;
+                  const id = String(a?.id || a?._id || a);
+                  const name = a?.name || a?.email || id;
+                  const avatarUrl = a?.avatarUrl;
+
                   return (
-                    <Tooltip key={id} title={user?.name}>
-                      <Avatar src={user?.avatarUrl}>{user?.name?.[0]}</Avatar>
+                    <Tooltip key={id} title={name}>
+                      <Avatar src={avatarUrl}>{name?.[0]}</Avatar>
                     </Tooltip>
                   );
                 })}
@@ -410,7 +414,17 @@ export default function TasksPage() {
               <Text type="secondary" className="text-xs block mt-3 mb-1">
                 Thuộc sprint
               </Text>
-              <Tag>{mockSprints[0].name}</Tag>
+              {selectedTask.sprint ? (
+                <Tag>
+                  {typeof selectedTask.sprint === 'string'
+                    ? selectedTask.sprint
+                    : (selectedTask.sprint as any).name}
+                </Tag>
+              ) : (
+                <Text type="secondary" className="text-xs">
+                  Không thuộc sprint nào
+                </Text>
+              )}
             </div>
           </Space>
         ) : (

@@ -20,11 +20,13 @@ import {
   DatePicker,
   message,
   Tooltip,
+  ColorPicker,
 } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import projectServices from '@/services/projectService';
 import taskServices, { type Task, type TaskStatus, type TaskPriority } from '@/services/taskServices';
 import teamService, { type TeamMember } from '@/services/teamService';
+import labelServices, { type Label } from '@/services/labelServices';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -61,6 +63,15 @@ export default function ProjectDetailPage() {
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskForm] = Form.useForm();
 
+  const [creatingTask, setCreatingTask] = useState(false);
+
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [labelsLoading, setLabelsLoading] = useState(false);
+
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState('#52c41a');
+  const [creatingLabel, setCreatingLabel] = useState(false);
+
   const teamId: string | null = useMemo(() => {
     if (!project) return null;
     const team = project.team;
@@ -84,14 +95,18 @@ export default function ProjectDetailPage() {
           return;
         }
 
-        const [membersRes, taskRes, overviewRes] = await Promise.all([
+        const [membersRes, taskRes, overviewRes, labelRes] = await Promise.all([
           teamService.getMembers(tId),
           taskServices.list({ team: tId, project: proj._id || projectId, limit: 100 }),
           taskServices.getOverview({ team: tId, project: proj._id || projectId }),
+          labelServices.list({ team: tId, project: proj._id || projectId, limit: 200 }),
         ]);
 
         setTeamMembers(membersRes.data || []);
         setTasks(taskRes.data.items || taskRes.data || []);
+
+        const labelsData = labelRes.data.items || labelRes.data || [];
+        setLabels(labelsData);
 
         // map overview
         const byStatus = overviewRes.data.byStatus || [];
@@ -149,10 +164,26 @@ export default function ProjectDetailPage() {
   };
 
   const handleSubmitTask = async (values: any) => {
-    if (!teamId || !project?._id) return message.error('Thiếu team hoặc project');
+    if (!teamId || !project?._id) {
+      message.error('Thiếu team hoặc project');
+      return;
+    }
 
     try {
+      setCreatingTask(true);
+
+      const labelIds: string[] = Array.isArray(values.labels)
+        ? values.labels
+            .map((id: any) =>
+              String(
+                typeof id === 'string' ? id : id?._id || id?.value || ''
+              ).trim(),
+            )
+            .filter(Boolean)
+        : [];
+
       const due: DayjsLike | undefined = values.dueDate;
+
       await taskServices.create({
         team: teamId,
         project: project._id,
@@ -161,29 +192,95 @@ export default function ProjectDetailPage() {
         status: values.status as TaskStatus,
         priority: values.priority as TaskPriority,
         assignees: values.assignees || [],
-        labels: values.labels || [],
-        dueDate: due ? due.toISOString?.() || due.toDate?.().toISOString() : undefined,
+        labels: labelIds,
+        dueDate: due
+          ? due.toISOString?.() || due.toDate?.().toISOString()
+          : undefined,
       });
 
       message.success('Đã tạo task thành công');
-      setTaskModalOpen(false);
 
-      // reload tasks + overview
+      // Đóng modal + reset form
+      setTaskModalOpen(false);
+      taskForm.resetFields();
+
+      // ===== Reload tasks + overview =====
       const [taskRes, overviewRes] = await Promise.all([
-        taskServices.list({ team: teamId, project: project._id, limit: 100 }),
-        taskServices.getOverview({ team: teamId, project: project._id }),
+        taskServices.list({
+          team: teamId,
+          project: project._id || projectId,
+          limit: 100,
+        }),
+        taskServices.getOverview({
+          team: teamId,
+          project: project._id || projectId,
+        }),
       ]);
 
       setTasks(taskRes.data.items || taskRes.data || []);
+
       const byStatus = overviewRes.data.byStatus || [];
-      const map: any = { backlog: 0, todo: 0, in_progress: 0, done: 0, review: 0, blocked: 0 };
+      const map: any = {
+        backlog: 0,
+        todo: 0,
+        in_progress: 0,
+        done: 0,
+        review: 0,
+        blocked: 0,
+      };
       byStatus.forEach((item) => {
-        if (item?._id && map.hasOwnProperty(item._id)) map[item._id] = item.count || 0;
+        if (item?._id && Object.prototype.hasOwnProperty.call(map, item._id)) {
+          map[item._id] = item.count || 0;
+        }
       });
       setOverview({ ...map, overdue: overviewRes.data.overdue || 0 });
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Tạo task thất bại');
+    } finally {
+      setCreatingTask(false);
+    }
+  };
+
+
+  const handleQuickCreateLabel = async () => {
+    if (!teamId || !project?._id) {
+      message.error('Thiếu team hoặc project, không thể tạo nhãn');
+      return;
+    }
+
+    if (!newLabelName.trim()) {
+      message.error('Nhập tên nhãn trước đã');
+      return;
+    }
+
+    try {
+      setCreatingLabel(true);
+      const res = await labelServices.create({
+        team: teamId,
+        project: project._id,
+        name: newLabelName.trim(),
+        color: newLabelColor,
+      });
+
+      const created = res.data || res;
+
+      // thêm vào danh sách nhãn đang có
+      setLabels((prev) => [...prev, created]);
+
+      // auto chọn nhãn mới cho field labels của taskForm
+      const current: string[] = taskForm.getFieldValue('labels') || [];
+      taskForm.setFieldsValue({
+        labels: [...current, created._id],
+      });
+
+      setNewLabelName('');
+      message.success('Đã tạo nhãn mới');
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data || 'Tạo nhãn thất bại');
+    } finally {
+      setCreatingLabel(false);
     }
   };
 
@@ -341,6 +438,7 @@ export default function ProjectDetailPage() {
         onCancel={() => setTaskModalOpen(false)}
         onOk={() => taskForm.submit()}
         okText="Tạo task"
+        confirmLoading={creatingTask} 
       >
         <Form layout="vertical" form={taskForm} onFinish={handleSubmitTask}>
           <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: 'Nhập tiêu đề' }]}>
@@ -390,6 +488,57 @@ export default function ProjectDetailPage() {
               </Form.Item>
             </Col>
           </Row>
+
+          <Form.Item name="labels" label="Nhãn">
+            <Space direction="vertical" className="w-full">
+              {/* Select nhãn có sẵn */}
+              <Select
+                mode="multiple"
+                placeholder="Chọn nhãn"
+                loading={labelsLoading}
+                allowClear
+              >
+                {labels.map((lb) => (
+                  <Option key={lb._id} value={lb._id}>
+                    {/* hiển thị kèm màu */}
+                    <Tag color={lb.color || 'default'}>{lb.name}</Tag>
+                  </Option>
+                ))}
+              </Select>
+
+              {/* 👇 Quick create nhãn mới */}
+              <Space.Compact className="w-full">
+                <Input
+                  placeholder="Tên nhãn mới (VD: Bug, Feature...)"
+                  value={newLabelName}
+                  onChange={(e) => setNewLabelName(e.target.value)}
+                />
+                {/* native color picker: user click chọn, không cần nhớ mã màu */}
+                <input
+                  type="color"
+                  value={newLabelColor}
+                  onChange={(e) => setNewLabelColor(e.target.value)}
+                  style={{
+                    width: 48,
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    background: 'transparent',
+                  }}
+                />
+                <Button
+                  type="default"
+                  loading={creatingLabel}
+                  onClick={handleQuickCreateLabel}
+                >
+                  Thêm nhãn
+                </Button>
+              </Space.Compact>
+              <Text type="secondary" className="text-xs">
+                Gõ tên nhãn mới, chọn màu rồi bấm "Thêm nhãn" để tạo nhanh và gán luôn cho task.
+              </Text>
+            </Space>
+          </Form.Item>
         </Form>
       </Modal>
     </div>
