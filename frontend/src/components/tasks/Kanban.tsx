@@ -1,7 +1,6 @@
 // src/components/tasks/Kanban.tsx
 import type { MouseEvent } from 'react';
-import { Card, Button, Tag, Typography, Dropdown, Tooltip } from 'antd';
-import { MoreOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Tag, Typography, Tooltip } from 'antd';
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import type { DropResult } from "@hello-pangea/dnd";
 import type { Task } from '@/types';
@@ -12,7 +11,7 @@ const { Text } = Typography;
 interface KanbanProps {
   tasks: Task[];
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
-  onTaskDelete: (taskId: string) => void;
+  onTaskDelete: (taskId: string) => void;      // vẫn giữ prop nếu chỗ khác còn dùng
   onCreateTask?: (status: Task['status']) => void;
   onTaskSelect?: (task: Task) => void;
 }
@@ -37,33 +36,43 @@ const priorityConfig: Record<string, { color: string }> = {
 export default function Kanban({
   tasks,
   onTaskUpdate,
-  onTaskDelete,
-  onCreateTask,
+  onTaskDelete,     // chưa dùng nữa trong Kanban, nhưng có thể chỗ khác vẫn pass vào
   onTaskSelect,
 }: KanbanProps) {
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     const { source, destination, draggableId } = result;
-
     if (source.droppableId === destination.droppableId) return;
-
     const newStatus = destination.droppableId as Task['status'];
     onTaskUpdate(draggableId, { status: newStatus });
   };
 
-  const getTasksByStatus = (status: Task['status']) => tasks.filter(t => t.status === status);
+  const getTasksByStatus = (status: Task['status']) =>
+    tasks.filter((t) => t.status === status);
 
   const renderTask = (task: Task, index: number) => {
     const priority = task.priority || 'medium';
 
-    const handleCardClick = (event: MouseEvent) => {
-      if ((event.target as HTMLElement).closest('.ant-card-actions')) return;
+    // Lấy tên project từ task.project (có thể là id hoặc object)
+    const project: any = (task as any).project;
+    let projectName = '';
+
+    if (project) {
+      if (typeof project === 'string') {
+        // nếu backend chỉ trả về id string, tạm hiển thị id
+        projectName = project;
+      } else if (typeof project === 'object') {
+        projectName = project.name || project.key || '';
+      }
+    }
+
+    const handleCardClick = (_event: MouseEvent) => {
       onTaskSelect?.(task);
     };
 
     return (
       <Draggable key={task.id} draggableId={task.id} index={index}>
-        {(provided, snapshot) => (
+        {(provided) => (
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}
@@ -74,14 +83,24 @@ export default function Kanban({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className={`mb-3`}
+              className="mb-3"
             >
               <Tooltip
                 title={
                   <>
                     {task.description && <div>{task.description}</div>}
-                    {task.storyPoints !== undefined && <div>Story Points: {task.storyPoints}</div>}
-                    {task.dueDate && <div>Deadline: {new Date(task.dueDate).toLocaleDateString()}</div>}
+                    {task.storyPoints !== undefined && (
+                      <div>Story Points: {task.storyPoints}</div>
+                    )}
+                    {task.dueDate && (
+                      <div>
+                        Deadline:{' '}
+                        {new Date(task.dueDate).toLocaleDateString()}
+                      </div>
+                    )}
+                    {projectName && (
+                      <div>Project: {projectName}</div>
+                    )}
                   </>
                 }
                 placement="topLeft"
@@ -89,38 +108,43 @@ export default function Kanban({
                 <Card
                   size="small"
                   className="hover:shadow-md transition-shadow cursor-pointer"
-                  actions={[
-                    <Dropdown
-                      menu={{
-                        items: [
-                          { key: 'edit', icon: <EditOutlined />, label: 'Sửa', onClick: () => {} },
-                          { type: 'divider' as const },
-                          { key: 'delete', icon: <DeleteOutlined />, danger: true, label: 'Xóa', onClick: () => onTaskDelete(task.id) },
-                        ],
-                      }}
-                      trigger={['click']}
-                    >
-                      <MoreOutlined />
-                    </Dropdown>,
-                  ]}
+                  // ❌ Bỏ hoàn toàn actions => không còn icon ⋮, không xoá/sửa trong Kanban nữa
                   onClick={handleCardClick}
                 >
                   <div className="space-y-2">
-                    <Text strong className="block">{task.title}</Text>
+                    {/* Tiêu đề + tên project */}
+                    <div className="flex flex-col">
+                      <Text strong className="block">
+                        {task.title}
+                      </Text>
+                      {projectName && (
+                        <Text
+                          type="secondary"
+                          className="text-xs block"
+                        >
+                          {projectName}
+                        </Text>
+                      )}
+                    </div>
 
                     {task.description && (
                       <Text type="secondary" className="text-xs block">
                         {task.description.length > 100
                           ? `${task.description.substring(0, 100)}...`
-                          : task.description
-                        }
+                          : task.description}
                       </Text>
                     )}
 
-                    <div className="flex justify-between items-center">
-                      <Tag color={priorityConfig[priority].color}>{priority}</Tag>
+                    {/* Priority + Due Date */}
+                    <div className="flex flex-col">
+                      <Tag color={priorityConfig[priority].color}>
+                        {priority}
+                      </Tag>
                       {task.dueDate && (
-                        <Text type="secondary" className="text-xs">
+                        <Text
+                          type="secondary"
+                          className="text-xs mt-1"
+                        >
                           {new Date(task.dueDate).toLocaleDateString()}
                         </Text>
                       )}
@@ -128,12 +152,11 @@ export default function Kanban({
 
                     {task.tags && task.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1">
-                        {task.tags.slice(0, 2).map(tag => (
-                          <Tag key={tag} color="blue">{tag}</Tag>
+                        {task.tags.map((tag) => (
+                          <Tag key={tag} color="blue">
+                            {tag}
+                          </Tag>
                         ))}
-                        {task.tags.length > 2 && (
-                          <Tag color="default">+{task.tags.length - 2}</Tag>
-                        )}
                       </div>
                     )}
                   </div>
@@ -152,30 +175,28 @@ export default function Kanban({
 
     return (
       <div className="flex-1 min-w-0">
-        <div className="bg-gray-50 rounded-lg p-4 h-full">
+        <div className="bg-gray-50 rounded-lg p-4 h-full flex flex-col">
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center space-x-2">
               <Tag color={config.color}>{config.title}</Tag>
-              <Text type="secondary" className="text-sm">{tasksByStatus.length}</Text>
+              <Text type="secondary" className="text-sm">
+                {tasksByStatus.length}
+              </Text>
             </div>
-            <Button
-              type="text"
-              size="small"
-              icon={<PlusOutlined />}
-              disabled={!onCreateTask}
-              onClick={() => onCreateTask?.(status)}
-            />
           </div>
-
           <Droppable droppableId={status}>
             {(provided, snapshot) => (
               <div
                 ref={provided.innerRef}
                 {...provided.droppableProps}
-                className={`min-h-32 transition-colors ${snapshot.isDraggingOver ? 'bg-blue-50' : ''}`}
+                className={`min-h-32 pr-1 overflow-y-auto max-h-[calc(100vh-280px)] transition-colors ${
+                  snapshot.isDraggingOver ? 'bg-blue-50' : ''
+                }`}
               >
                 <AnimatePresence>
-                  {tasksByStatus.map((task, index) => renderTask(task, index))}
+                  {tasksByStatus.map((task, index) =>
+                    renderTask(task, index),
+                  )}
                 </AnimatePresence>
                 {provided.placeholder}
               </div>

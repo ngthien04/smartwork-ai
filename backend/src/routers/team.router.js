@@ -9,6 +9,9 @@ import { UserModel } from '../models/users.js';
 import { InviteModel } from '../models/invite.js';
 import { ActivityModel } from '../models/activity.js';
 
+import { ProjectModel } from '../models/project.js';
+import { TaskModel } from '../models/task.js';
+
 
 import { sendWelcomeEmail } from '../helpers/mail.helper.js';
 // import { sendTeamInviteEmail } from '../helpers/your-invite-mail.js' 
@@ -195,7 +198,7 @@ router.put(
   })
 );
 
-// DELETE /api/teams/:teamId  -> soft delete (leader)
+// DELETE /api/teams/:teamId  -> soft delete (leader) + soft delete project & task của team
 router.delete(
   '/:teamId',
   authMid,
@@ -209,9 +212,35 @@ router.delete(
       return res.status(UNAUTHORIZED).send('Chỉ leader được xoá team');
     }
 
+    const now = new Date();
+
+    // 1) Soft delete team
     team.isDeleted = true;
-    team.deletedAt = new Date();
+    team.deletedAt = now;
     await team.save();
+
+    // 2) Soft delete tất cả project thuộc team này
+    await ProjectModel.updateMany(
+      { team: team._id, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: now,
+          isArchived: true, // cho tiện, coi như project đã archive luôn
+        },
+      },
+    );
+
+    // 3) Soft delete tất cả task thuộc team này
+    await TaskModel.updateMany(
+      { team: team._id, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: now,
+        },
+      },
+    );
 
     await recordActivity({
       team: team._id,

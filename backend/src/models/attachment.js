@@ -1,4 +1,3 @@
-// src/models/attachment.js
 import { model, Schema } from 'mongoose';
 
 const AttachmentSchema = new Schema(

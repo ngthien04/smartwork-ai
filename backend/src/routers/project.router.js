@@ -247,7 +247,7 @@ router.put(
   })
 );
 
-// DELETE /api/projects/:projectId   (leader/admin) — soft delete
+// DELETE /api/projects/:projectId   (leader/admin) — soft delete + soft delete tasks
 router.delete(
   '/:projectId',
   authMid,
@@ -261,10 +261,20 @@ router.delete(
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới xoá project');
     }
 
+    const now = new Date();
+
+    // 1) Soft delete project
     proj.isDeleted = true;
-    proj.deletedAt = new Date();
+    proj.deletedAt = now;
     await proj.save();
 
+    // 2) Soft delete tất cả task thuộc project này
+    await TaskModel.updateMany(
+      { project: proj._id, isDeleted: { $ne: true } },
+      { $set: { isDeleted: true, deletedAt: now } },
+    );
+
+    // 3) Ghi activity
     await recordActivity({
       team: proj.team,
       actor: req.user.id,
@@ -275,7 +285,7 @@ router.delete(
     });
 
     res.send();
-  })
+  }),
 );
 
 router.get(

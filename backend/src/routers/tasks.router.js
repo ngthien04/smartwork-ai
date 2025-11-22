@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
-import adminMid from '../middleware/admin.mid.js';
 import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
 
 import { TaskModel } from '../models/task.js';
@@ -11,10 +10,11 @@ import { LabelModel } from '../models/label.js';
 import { AttachmentModel } from '../models/attachment.js';
 import { ActivityModel } from '../models/activity.js';
 import { UserModel } from '../models/users.js';
-
+import { NotificationModel } from '../models/notification.js';
 
 import multer from 'multer';
-import { configCloudinary } from '../config/cloudinary.config.js'; 
+import { configCloudinary } from '../config/cloudinary.config.js';
+
 const cloudinary = configCloudinary();
 const isValidId = (id) => mongoose.isValidObjectId(id);
 
@@ -25,44 +25,121 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     const ok =
-      /^image\//.test(file.mimetype) ||                 
+      /^image\//.test(file.mimetype) ||
       file.mimetype === 'application/pdf' ||
-      file.mimetype === 'application/octet-stream';     
+      file.mimetype === 'application/octet-stream';
     cb(ok ? null : new Error('Unsupported file type'), ok);
   },
 });
 
-// Helper upload buffer lên Cloudinary qua stream
-function uploadToCloudinary(buffer, { folder, filename, resource_type = 'auto' } = {}) {
+// ===== Helper upload buffer lên Cloudinary qua stream =====
+function uploadToCloudinary(
+  buffer,
+  { folder, filename, resource_type = 'auto' } = {}
+) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
-        public_id: filename, 
-        resource_type,       
+        public_id: filename,
+        resource_type,
       },
       (err, result) => {
         if (err) return reject(err);
         resolve(result);
-      }
+      },
     );
     stream.end(buffer);
   });
 }
 
+// ===== Notification helpers =====
+
+// Tạo thông báo cho nhiều user
+async function createNotificationsForUsers(userIds, { type, payload }) {
+  if (!Array.isArray(userIds) || !userIds.length) return;
+
+  const docs = userIds.map((uid) => ({
+    user: new mongoose.Types.ObjectId(String(uid)),
+    channel: 'web',
+    type,
+    payload: payload ?? {},
+  }));
+
+  try {
+    await NotificationModel.insertMany(docs, { ordered: false });
+  } catch (e) {
+    console.warn('[notification insert error]', e?.message || e);
+  }
+}
+
+// Lấy list user liên quan tới task (assignees + reporter)
+function getTaskParticipantUserIds(task) {
+  const ids = new Set();
+
+  if (Array.isArray(task.assignees)) {
+    for (const u of task.assignees) {
+      const id = typeof u === 'object' ? u._id : u;
+      if (id) {
+        ids.add(String(id));
+      }
+    }
+  }
+
+  if (task.reporter) {
+    ids.add(String(task.reporter));
+  }
+
+  return Array.from(ids);
+}
+
+// Gửi thông báo cho tất cả người liên quan tới task
+async function notifyTaskParticipants(task, type, extraPayload = {}) {
+  const participantIds = getTaskParticipantUserIds(task);
+  if (!participantIds.length) return;
+
+  try {
+    await createNotificationsForUsers(participantIds, {
+      type,
+      payload: {
+        taskId: task._id,
+        taskTitle: task.title,
+        ...extraPayload,
+      },
+    });
+  } catch (e) {
+    console.warn('[notifyTaskParticipants error]', e?.message || e);
+  }
+}
+
+// ===== Common helpers =====
+
 const router = Router();
-const handler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const handler =
+  (fn) =>
+  (req, res, next) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
 
 function toObjectId(id) {
   return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
 }
 
-async function recordActivity({ team, actor, verb, targetType, targetId, metadata }) {
+async function recordActivity({
+  team,
+  actor,
+  verb,
+  targetType,
+  targetId,
+  metadata,
+}) {
   try {
     await ActivityModel.create({ team, actor, verb, targetType, targetId, metadata });
-  } catch {} 
+  } catch {}
 }
 
+// ===================================================================
+// GET /api/tasks  (list + filter theo team, project, sprint, ...)
+// ===================================================================
 router.get(
   '/',
   authMid,
@@ -82,19 +159,52 @@ router.get(
       team: teamQuery,
     } = req.query;
 
+    const filter = {};
+
+    // Lấy list team mà user thuộc về
+    const user = await UserModel.findById(req.user.id, {
+      roles: 1,
+      isAdmin: 1,
+    }).lean();
+    const teamIds = (user?.roles || [])
+      .map((r) => r.team)
+      .filter(Boolean)
+      .map((id) => toObjectId(id));
+
     let team = teamQuery;
 
-    if (!team) {
-      const user = await UserModel.findById(req.user.id, { roles: 1 }).lean();
-      const firstTeam = user?.roles?.[0]?.team;
-      if (firstTeam) {
-        team = String(firstTeam);
+    // Nếu có ?team=... thì dùng param, nhưng phải check quyền
+    if (team) {
+      const requestedTeamId = toObjectId(team);
+
+      if (!user?.isAdmin) {
+        const canAccess = teamIds.some(
+          (tId) => String(tId) === String(requestedTeamId),
+        );
+        if (!canAccess) {
+          return res.status(UNAUTHORIZED).send('Không có quyền xem team này');
+        }
       }
+
+      filter.team = requestedTeamId;
+    } else {
+      // Không truyền ?team=...
+      if (!user?.isAdmin) {
+        // Non-admin: chỉ xem task trong các team của mình
+        if (!teamIds.length) {
+          return res.send({
+            page: Number(page) || 1,
+            limit: Number(size || limit) || 20,
+            total: 0,
+            items: [],
+          });
+        }
+
+        filter.team = { $in: teamIds };
+      }
+      // Admin mà không truyền team -> xem tất cả team
     }
 
-    // ---- build filter ----
-    const filter = {};
-    if (team) filter.team = toObjectId(team);
     if (project) filter.project = toObjectId(project);
     if (sprint) filter.sprint = toObjectId(sprint);
     if (assignee) filter.assignees = toObjectId(assignee);
@@ -106,13 +216,17 @@ router.get(
       filter.$text = { $search: q };
     }
 
-    // ---- paging: ưu tiên size nếu có ----
     const pageNum = Number(page) || 1;
     const limitNum = Number(size || limit) || 20;
     const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([
-      TaskModel.find(filter).sort(sort).skip(skip).limit(limitNum).lean(),
+      TaskModel.find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum)
+        .populate('project', 'name key')
+        .lean(),
       TaskModel.countDocuments(filter),
     ]);
 
@@ -122,11 +236,12 @@ router.get(
       total,
       items,
     });
-  })
+  }),
 );
 
-
-// GET /tasks/:taskId
+// ===================================================================
+// GET /api/tasks/:taskId
+// ===================================================================
 router.get(
   '/:taskId',
   authMid,
@@ -142,11 +257,11 @@ router.get(
         populate: [
           {
             path: 'subtask',
-            select: 'title',              
+            select: 'title',
           },
           {
             path: 'uploadedBy',
-            select: 'name email avatarUrl' // nếu muốn show ai upload
+            select: 'name email avatarUrl',
           },
         ],
       })
@@ -156,12 +271,28 @@ router.get(
       return res.status(404).send('Task không tồn tại');
     }
 
+    // Check quyền: non-admin chỉ xem task thuộc team mình
+    if (!req.user?.isAdmin) {
+      const user = await UserModel.findById(req.user.id, { roles: 1 }).lean();
+      const teamIds = (user?.roles || [])
+        .map((r) => String(r.team))
+        .filter(Boolean);
+
+      if (!teamIds.includes(String(task.team))) {
+        return res
+          .status(UNAUTHORIZED)
+          .send('Không có quyền truy cập task này');
+      }
+    }
+
     res.send(task);
   }),
 );
 
-//POST /tasks  (create)
-//body: { team, project?, sprint?, title, description?, type?, status?, priority?, assignees[], labels[], dueDate?, estimate?, storyPoints? }
+// ===================================================================
+// POST /api/tasks  (create)
+// body: { team, project?, sprint?, title, ... }
+// ===================================================================
 router.post(
   '/',
   authMid,
@@ -183,7 +314,8 @@ router.post(
       storyPoints,
     } = req.body || {};
 
-    if (!team || !title) return res.status(BAD_REQUEST).send('Thiếu team/title');
+    if (!team || !title)
+      return res.status(BAD_REQUEST).send('Thiếu team/title');
 
     const doc = await TaskModel.create({
       team,
@@ -212,16 +344,41 @@ router.post(
       metadata: { title: doc.title },
     });
 
+    // Notify cho assignees (nếu có)
+    try {
+      const assigneeIds = (assignees || [])
+        .map((u) => (typeof u === 'object' ? u._id : u))
+        .filter((id) => id);
+
+      if (assigneeIds.length) {
+        await createNotificationsForUsers(assigneeIds, {
+          type: 'task_assigned',
+          payload: {
+            taskId: doc._id,
+            taskTitle: doc.title,
+            projectId: doc.project || null,
+            createdById: req.user.id,
+            createdByName: req.user.name,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('[task created noti error]', e?.message || e);
+    }
+
     res.status(201).send(doc);
-  })
+  }),
 );
 
-//PUT /tasks/:taskId (update general fields)
+// ===================================================================
+// PUT /api/tasks/:taskId  (update general fields)
+// ===================================================================
 router.put(
   '/:taskId',
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
+
     const allowed = [
       'title',
       'description',
@@ -246,9 +403,11 @@ router.put(
     }
 
     const before = await TaskModel.findById(taskId);
-    if (!before || before.isDeleted) return res.status(404).send('Task không tồn tại');
+    if (!before || before.isDeleted)
+      return res.status(404).send('Task không tồn tại');
 
     await TaskModel.findByIdAndUpdate(taskId, updates);
+
     await recordActivity({
       team: before.team,
       actor: req.user.id,
@@ -259,12 +418,18 @@ router.put(
     });
 
     const after = await TaskModel.findById(taskId).lean();
+
+    // Notify participants về update
+    await notifyTaskParticipants(after, 'task_updated', { updates });
+
     res.send(after);
-  })
+  }),
 );
 
-//PUT /tasks/:taskId/status  (change status quickly)
-//body: { status }
+// ===================================================================
+// PUT /api/tasks/:taskId/status  (change status quickly)
+// body: { status }
+// ===================================================================
 router.put(
   '/:taskId/status',
   authMid,
@@ -273,7 +438,11 @@ router.put(
     const { status } = req.body || {};
     if (!status) return res.status(BAD_REQUEST).send('Missing status');
 
-    const t = await TaskModel.findByIdAndUpdate(taskId, { status }, { new: true });
+    const t = await TaskModel.findByIdAndUpdate(
+      taskId,
+      { status },
+      { new: true },
+    );
     if (!t) return res.status(404).send('Task không tồn tại');
 
     await recordActivity({
@@ -285,12 +454,16 @@ router.put(
       metadata: { status },
     });
 
+    await notifyTaskParticipants(t, 'task_status_changed', { status });
+
     res.send(t);
-  })
+  }),
 );
 
-//PUT /tasks/:taskId/assign  (assign or replace assignees)
-//body: { assignees: [] }
+// ===================================================================
+// PUT /api/tasks/:taskId/assign  (assign or replace assignees)
+// body: { assignees: [] }
+// ===================================================================
 router.put(
   '/:taskId/assign',
   authMid,
@@ -298,7 +471,11 @@ router.put(
     const { taskId } = req.params;
     const { assignees = [] } = req.body || {};
 
-    const t = await TaskModel.findByIdAndUpdate(taskId, { assignees }, { new: true });
+    const t = await TaskModel.findByIdAndUpdate(
+      taskId,
+      { assignees },
+      { new: true },
+    );
     if (!t) return res.status(404).send('Task không tồn tại');
 
     await recordActivity({
@@ -310,12 +487,16 @@ router.put(
       metadata: { assignees },
     });
 
+    await notifyTaskParticipants(t, 'task_assigned', { assignees });
+
     res.send(t);
-  })
+  }),
 );
 
-// POST /tasks/:taskId/comments  (add a comment)
+// ===================================================================
+// POST /api/tasks/:taskId/comments  (add a comment)
 // body: { content, mentions?[] }
+// ===================================================================
 router.post(
   '/:taskId/comments',
   authMid,
@@ -324,8 +505,9 @@ router.post(
     const { content, mentions = [] } = req.body || {};
     if (!content) return res.status(BAD_REQUEST).send('Missing content');
 
-    const exists = await TaskModel.exists({ _id: taskId, isDeleted: { $ne: true } });
-    if (!exists) return res.status(404).send('Task không tồn tại');
+    const task = await TaskModel.findById(taskId).lean();
+    if (!task || task.isDeleted)
+      return res.status(404).send('Task không tồn tại');
 
     const cmt = await CommentModel.create({
       task: taskId,
@@ -334,7 +516,6 @@ router.post(
       mentions,
     });
 
-    const task = await TaskModel.findById(taskId).lean();
     await recordActivity({
       team: task.team,
       actor: req.user.id,
@@ -344,12 +525,42 @@ router.post(
       metadata: { commentId: cmt._id },
     });
 
+    // 1) Thông báo cho participants (assignees + reporter)
+    await notifyTaskParticipants(task, 'task_comment', {
+      commentId: cmt._id,
+      commentPreview: content.slice(0, 120),
+      authorId: req.user.id,
+      authorName: req.user.name,
+    });
+
+    // 2) Thông báo riêng cho những người bị mention (comment_mention)
+    if (Array.isArray(mentions) && mentions.length) {
+      const mentionedIds = mentions
+        .map((m) => String(m))
+        .filter((id) => id && id !== String(req.user.id)); // không notify chính mình
+
+      if (mentionedIds.length) {
+        await createNotificationsForUsers(mentionedIds, {
+          type: 'comment_mention',
+          payload: {
+            taskId: task._id,
+            taskTitle: task.title,
+            commentId: cmt._id,
+            commentPreview: content.slice(0, 120),
+            authorId: req.user.id,
+            authorName: req.user.name,
+          },
+        });
+      }
+    }
+
     res.status(201).send(cmt);
-  })
+  }),
 );
 
-// POST /tasks/:taskId/subtasks  (create subtask)
-// body: { title, assignee?, order? }
+// ===================================================================
+// POST /api/tasks/:taskId/subtasks  (create subtask)
+// ===================================================================
 router.post(
   '/:taskId/subtasks',
   authMid,
@@ -358,7 +569,10 @@ router.post(
     const { title, assignee, order = 0 } = req.body || {};
     if (!title) return res.status(BAD_REQUEST).send('Missing title');
 
-    const exists = await TaskModel.exists({ _id: taskId, isDeleted: { $ne: true } });
+    const exists = await TaskModel.exists({
+      _id: taskId,
+      isDeleted: { $ne: true },
+    });
     if (!exists) return res.status(404).send('Task không tồn tại');
 
     const st = await SubtaskModel.create({
@@ -369,6 +583,7 @@ router.post(
     });
 
     const task = await TaskModel.findById(taskId).lean();
+
     await recordActivity({
       team: task.team,
       actor: req.user.id,
@@ -378,12 +593,19 @@ router.post(
       metadata: { subtaskId: st._id, title },
     });
 
+    await notifyTaskParticipants(task, 'subtask_updated', {
+      action: 'created',
+      subtaskId: st._id,
+      title,
+    });
+
     res.status(201).send(st);
-  })
+  }),
 );
 
-//PUT /tasks/:taskId/subtasks/:subtaskId  (update subtask)
-// body: { title?, isDone?, assignee?, order? }
+// ===================================================================
+// PUT /api/tasks/:taskId/subtasks/:subtaskId  (update subtask)
+// ===================================================================
 router.put(
   '/:taskId/subtasks/:subtaskId',
   authMid,
@@ -394,14 +616,17 @@ router.put(
     for (const k of ['title', 'isDone', 'assignee', 'order']) {
       if (typeof req.body?.[k] !== 'undefined') updates[k] = req.body[k];
     }
-    if (Object.prototype.hasOwnProperty.call(updates, 'isDone') && updates.isDone === true) {
+    if (
+      Object.prototype.hasOwnProperty.call(updates, 'isDone') &&
+      updates.isDone === true
+    ) {
       updates.doneAt = new Date();
     }
 
     const st = await SubtaskModel.findOneAndUpdate(
       { _id: subtaskId, parentTask: taskId },
       updates,
-      { new: true }
+      { new: true },
     );
     if (!st) return res.status(404).send('Subtask không tồn tại');
 
@@ -415,18 +640,29 @@ router.put(
       metadata: { subtaskId: st._id, updates },
     });
 
+    await notifyTaskParticipants(task, 'subtask_updated', {
+      action: 'updated',
+      subtaskId: st._id,
+      updates,
+    });
+
     res.send(st);
-  })
+  }),
 );
 
-// DELETE /tasks/:taskId/subtasks/:subtaskId
+// ===================================================================
+// DELETE /api/tasks/:taskId/subtasks/:subtaskId
+// ===================================================================
 router.delete(
   '/:taskId/subtasks/:subtaskId',
   authMid,
   handler(async (req, res) => {
     const { taskId, subtaskId } = req.params;
 
-    const st = await SubtaskModel.findOneAndDelete({ _id: subtaskId, parentTask: taskId });
+    const st = await SubtaskModel.findOneAndDelete({
+      _id: subtaskId,
+      parentTask: taskId,
+    });
     if (!st) return res.status(404).send('Subtask không tồn tại');
 
     const task = await TaskModel.findById(taskId).lean();
@@ -439,12 +675,19 @@ router.delete(
       metadata: { subtaskId },
     });
 
+    await notifyTaskParticipants(task, 'subtask_updated', {
+      action: 'deleted',
+      subtaskId,
+    });
+
     res.send();
-  })
+  }),
 );
 
-// POST /tasks/:taskId/labels   (replace labels)
+// ===================================================================
+// POST /api/tasks/:taskId/labels   (replace labels)
 // body: { labels: [labelIds] }
+// ===================================================================
 router.post(
   '/:taskId/labels',
   authMid,
@@ -452,16 +695,20 @@ router.post(
     const { taskId } = req.params;
     const { labels = [] } = req.body || {};
 
-    // xác thực id hợp lệ
-    if (!Array.isArray(labels)) return res.status(BAD_REQUEST).send('labels must be array');
+    if (!Array.isArray(labels))
+      return res.status(BAD_REQUEST).send('labels must be array');
     const ids = labels.map(toObjectId);
 
     const t = await TaskModel.findById(taskId);
     if (!t || t.isDeleted) return res.status(404).send('Task không tồn tại');
 
     if (ids.length) {
-      const count = await LabelModel.countDocuments({ _id: { $in: ids }, team: t.team });
-      if (count !== ids.length) return res.status(BAD_REQUEST).send('Label không hợp lệ');
+      const count = await LabelModel.countDocuments({
+        _id: { $in: ids },
+        team: t.team,
+      });
+      if (count !== ids.length)
+        return res.status(BAD_REQUEST).send('Label không hợp lệ');
     }
 
     t.labels = ids;
@@ -477,10 +724,12 @@ router.post(
     });
 
     res.send(t);
-  })
+  }),
 );
 
-// POST /tasks/:taskId/attachments
+// ===================================================================
+// POST /api/tasks/:taskId/attachments
+// ===================================================================
 router.post(
   '/:taskId/attachments',
   authMid,
@@ -513,11 +762,18 @@ router.post(
       metadata: { attachmentId: att._id, name },
     });
 
+    await notifyTaskParticipants(t, 'attachment_added', {
+      attachmentId: att._id,
+      name,
+    });
+
     res.status(201).send(att);
-  })
+  }),
 );
 
-// POST /tasks/:taskId/attachments/upload
+// ===================================================================
+// POST /api/tasks/:taskId/attachments/upload
+// ===================================================================
 router.post(
   '/:taskId/attachments/upload',
   authMid,
@@ -529,13 +785,11 @@ router.post(
 
     if (!file) return res.status(BAD_REQUEST).send('Missing file');
 
-    // Lấy task dạng document để chắc chắn tồn tại
     const task = await TaskModel.findById(taskId);
     if (!task || task.isDeleted) {
       return res.status(404).send('Task không tồn tại');
     }
 
-    // Nếu có subtaskId thì validate subtask thuộc task này
     let subtaskDoc = null;
     if (subtaskId) {
       if (!isValidId(subtaskId)) {
@@ -552,17 +806,15 @@ router.post(
       }
     }
 
-    // Upload lên Cloudinary
     const result = await uploadToCloudinary(file.buffer, {
       folder: 'smartwork/attachments',
       filename: undefined,
       resource_type: 'auto',
     });
 
-    // Tạo attachment, gắn task + (optional) subtask
     const att = await AttachmentModel.create({
       task: task._id,
-      subtask: subtaskDoc ? subtaskDoc._id : null,   // 👈 chỉ set 1 lần
+      subtask: subtaskDoc ? subtaskDoc._id : null,
       uploadedBy: req.user.id,
       name: file.originalname,
       mimeType: file.mimetype,
@@ -574,7 +826,6 @@ router.post(
       },
     });
 
-    // 👇 Quan trọng: add attachment vào task.attachments để populate được
     await TaskModel.findByIdAndUpdate(task._id, {
       $addToSet: { attachments: att._id },
     });
@@ -584,36 +835,52 @@ router.post(
       .populate('uploadedBy', 'name email avatarUrl')
       .lean();
 
+    await notifyTaskParticipants(task, 'attachment_added', {
+      attachmentId: att._id,
+      name: file.originalname,
+    });
+
     res.status(201).send(populated);
   }),
 );
 
-// DELETE /tasks/:taskId/attachments/:attachmentId
+// ===================================================================
+// DELETE /api/tasks/:taskId/attachments/:attachmentId
+// ===================================================================
 router.delete(
   '/:taskId/attachments/:attachmentId',
   authMid,
   handler(async (req, res) => {
     const { taskId, attachmentId } = req.params;
 
-    const att = await AttachmentModel.findOne({ _id: attachmentId, task: taskId });
+    const att = await AttachmentModel.findOne({
+      _id: attachmentId,
+      task: taskId,
+    });
     if (!att) return res.status(404).send('Attachment không tồn tại');
 
-    if (!req.user.isAdmin && String(att.uploadedBy) !== String(req.user.id)) {
+    if (
+      !req.user.isAdmin &&
+      String(att.uploadedBy) !== String(req.user.id)
+    ) {
       return res.status(UNAUTHORIZED).send('Không có quyền xoá tệp này');
     }
 
     if (att.storage?.provider === 'cloudinary' && att.storage?.key) {
       try {
-        await cloudinary.uploader.destroy(att.storage.key, { resource_type: 'auto' });
+        await cloudinary.uploader.destroy(att.storage.key, {
+          resource_type: 'auto',
+        });
       } catch (e) {
         console.warn('[cloudinary destroy failed]', e?.message || e);
       }
     }
 
     await AttachmentModel.deleteOne({ _id: attachmentId });
-    await TaskModel.findByIdAndUpdate(taskId, { $pull: { attachments: att._id } });
+    await TaskModel.findByIdAndUpdate(taskId, {
+      $pull: { attachments: att._id },
+    });
 
-    // Activity
     const task = await TaskModel.findById(taskId).lean();
     await recordActivity({
       team: task.team,
@@ -624,11 +891,17 @@ router.delete(
       metadata: { attachmentId },
     });
 
+    await notifyTaskParticipants(task, 'attachment_removed', {
+      attachmentId,
+    });
+
     return res.send();
-  })
+  }),
 );
 
-// DELETE /tasks/:taskId  
+// ===================================================================
+// DELETE /api/tasks/:taskId  (soft delete)
+// ===================================================================
 router.delete(
   '/:taskId',
   authMid,
@@ -654,11 +927,15 @@ router.delete(
       metadata: {},
     });
 
+    // tuỳ bạn có muốn notify delete không; ở đây bỏ qua
+
     res.send();
-  })
+  }),
 );
 
-// GET /tasks/stats/overview  
+// ===================================================================
+// GET /api/tasks/stats/overview
+// ===================================================================
 router.get(
   '/stats/overview',
   authMid,
@@ -677,7 +954,9 @@ router.get(
       ]),
       TaskModel.aggregate([
         { $match: match },
-        { $unwind: { path: '$assignees', preserveNullAndEmptyArrays: true } },
+        {
+          $unwind: { path: '$assignees', preserveNullAndEmptyArrays: true },
+        },
         { $group: { _id: '$assignees', count: { $sum: 1 } } },
       ]),
       TaskModel.countDocuments({
@@ -689,10 +968,10 @@ router.get(
 
     res.send({
       byStatus,
-      byAssignee, 
+      byAssignee,
       overdue,
     });
-  })
+  }),
 );
 
 export default router;

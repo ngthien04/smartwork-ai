@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { aiServices } from '@/services/aiServices';
 import type { ChatMessage, RootState } from '@/types';

@@ -82,7 +82,6 @@ export default function TaskDetailPage() {
   const { user } = useAuth();
   const currentUserId = (user as any)?._id || (user as any)?.id;
 
-  // ====== LOAD TASK + PROJECT ======
   useEffect(() => {
     const fetchData = async () => {
       if (!taskId) return;
@@ -123,7 +122,6 @@ export default function TaskDetailPage() {
     fetchData();
   }, [taskId]);
 
-  // ====== LOAD SUBTASKS / COMMENTS / ACTIVITIES SAU KHI CÓ TASK ======
   useEffect(() => {
     if (!task || (!task._id && !task.id)) return;
     const id = task.id || task._id;
@@ -189,7 +187,6 @@ export default function TaskDetailPage() {
     return () => clearInterval(interval); // cleanup khi unmount
   }, [task?.id]);
 
-  // ====== ASSIGNEES ======
   const assignees = useMemo(() => {
     if (!task?.assignees) return [];
     return (task.assignees as any[]).map((u) => ({
@@ -238,7 +235,6 @@ export default function TaskDetailPage() {
     [subtasks],
   );
 
-  // ====== ATTACHMENTS ======
   const reloadTaskAttachments = async (id: string) => {
     const res = await taskServices.getById(id);
     const t: any = res.data || res;
@@ -285,7 +281,6 @@ export default function TaskDetailPage() {
     }
   };
 
-  // ====== SUBTASK HANDLERS ======
   const handleCreateSubtask = async () => {
     if (!newSubtaskTitle.trim()) return;
     if (!task?.id && !task?._id) return;
@@ -335,7 +330,6 @@ export default function TaskDetailPage() {
 
   const handleOpenSubtaskModal = (subtask?: Subtask) => {
     if (subtask) {
-      // đang sửa
       setEditingSubtask(subtask);
 
       const assignee: any = subtask.assignee;
@@ -346,7 +340,6 @@ export default function TaskDetailPage() {
         assignee: assigneeId,
       });
     } else {
-      // tạo mới
       setEditingSubtask(null);
       subtaskForm.resetFields();
       setSubtaskFile(null);
@@ -365,7 +358,6 @@ export default function TaskDetailPage() {
 
       const assigneeId = values.assignee || undefined;
 
-      // === ĐANG SỬA SUBTASK ===
       if (editingSubtask) {
         const subId = (editingSubtask._id || editingSubtask.id) as string;
 
@@ -383,14 +375,13 @@ export default function TaskDetailPage() {
         );
 
         setSubtaskModalOpen(false);
-        setSubtaskFile(null); // (ở đây mình không cho đổi file, muốn thì mình upload mới)
+        setSubtaskFile(null); 
         setEditingSubtask(null);
         subtaskForm.resetFields();
         message.success('Cập nhật subtask thành công');
         return;
       }
 
-      // === TẠO SUBTASK MỚI ===
       const res = await subtaskServices.create({
         parentTask: taskId,
         title: values.title,
@@ -401,7 +392,6 @@ export default function TaskDetailPage() {
       const sub = res.data || res;
       setSubtasks((prev) => [...prev, sub]);
 
-      // Nếu có file, upload & gắn với subtask
       if (subtaskFile) {
         await taskServices.uploadAttachment(taskId, subtaskFile, {
           folder: 'smartwork/attachments',
@@ -441,7 +431,6 @@ export default function TaskDetailPage() {
     return { total, subtaskCount: subtaskIds.size };
   }, [attachments]);
 
-  // ====== COMMENT HANDLERS ======
   const handlePostComment = async () => {
     if (!newComment.trim()) return;
     if (!task?.id && !task?._id) return;
@@ -450,7 +439,6 @@ export default function TaskDetailPage() {
     try {
       setPostingComment(true);
 
-      // === EDIT COMMENT ===
       if (editingComment) {
         const commentId = (editingComment._id || editingComment.id) as string;
         const res = await commentServices.update(commentId, {
@@ -470,7 +458,6 @@ export default function TaskDetailPage() {
         return;
       }
 
-      // === NEW COMMENT (CÓ MENTIONS NẾU ĐANG REPLY) ===
       const mentions: string[] = [];
 
       if (replyingTo) {
@@ -511,7 +498,6 @@ export default function TaskDetailPage() {
     }
   };
 
-  // ====== ACTIVITIES RENDER ======
   const activityItems = useMemo(() => {
     if (!activities.length) return [];
     return activities.map((a) => {
@@ -525,7 +511,6 @@ export default function TaskDetailPage() {
     });
   }, [activities]);
 
-  // ====== NOT FOUND / LOADING ======
   if (!loading && !task) {
     return (
       <Result
@@ -549,7 +534,6 @@ export default function TaskDetailPage() {
     );
   }
 
-  // ====== UI ======
   return (
     <div className="space-y-4">
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
@@ -574,9 +558,7 @@ export default function TaskDetailPage() {
       </div>
 
       <Row gutter={[24, 24]}>
-        {/* LEFT COLUMN */}
         <Col xs={24} lg={16}>
-          {/* Thông tin chung */}
           <Card title="Thông tin chung">
             <Space direction="vertical" size="middle" className="w-full">
               <Paragraph>{task.description || 'Chưa có mô tả'}</Paragraph>
@@ -650,7 +632,6 @@ export default function TaskDetailPage() {
             </Space>
           </Card>
 
-          {/* Subtasks */}
           <Card
             title="Subtasks"
             className="mt-4"
@@ -661,7 +642,7 @@ export default function TaskDetailPage() {
                 loading={creatingSubtask}
                 onClick={() => handleOpenSubtaskModal()}   
               >
-                Thêm
+                Thêm subtask mới
               </Button>
             }
           >
@@ -713,16 +694,14 @@ export default function TaskDetailPage() {
             </Space>
           </Card>
 
-          {/* Attachments + Activity */}
           <Row gutter={[16, 25]} className="mt-4">
-            {/* Modal tạo / sửa subtask */}
             <Modal
               title={editingSubtask ? 'Sửa subtask' : 'Tạo subtask mới'}
               open={subtaskModalOpen}
               onCancel={() => {
                 setSubtaskModalOpen(false);
                 setSubtaskFile(null);
-                setEditingSubtask(null); // 👈 thêm cái này
+                setEditingSubtask(null); 
               }}
               onOk={handleSubmitSubtask}
               confirmLoading={creatingSubtask}
@@ -859,7 +838,6 @@ export default function TaskDetailPage() {
               >
                 <div className="max-h-80 overflow-y-auto pr-3">
                   <div className="pl-5">
-                    {/* KHÔNG scroll ở đây nữa */}
                     <Timeline
                       className="overflow-visible"
                       items={activityItems.map((item) => ({
@@ -884,7 +862,6 @@ export default function TaskDetailPage() {
             extra={<CommentOutlined />}
           >
             <Space direction="vertical" size="middle" className="w-full">
-              {/* Form nhập bình luận */}
               <div>
                 {replyingTo && (
                   <Alert
@@ -952,7 +929,6 @@ export default function TaskDetailPage() {
 
               <Divider />
 
-              {/* Danh sách comment */}
               <List
                 loading={commentsLoading}
                 dataSource={comments}
@@ -1029,7 +1005,6 @@ export default function TaskDetailPage() {
                               {comment.content}
                             </Paragraph>
 
-                            {/* (Optional) hiển thị mentions nếu backend có populate */}
                             {Array.isArray(comment.mentions) && comment.mentions.length > 0 && (
                               <Text type="secondary" className="text-xs">
                                 Nhắc tới:{' '}
@@ -1050,7 +1025,6 @@ export default function TaskDetailPage() {
           </Card>
         </Col>
 
-        {/* RIGHT COLUMN */}
         <Col xs={24} lg={8}>
           <Space direction="vertical" size="large" className="w-full">
             {/* AI Insights (tạm mock cứng vì chưa có API riêng) */}
@@ -1078,7 +1052,6 @@ export default function TaskDetailPage() {
               />
             </Card>
 
-            {/* Checklist báo cáo (mỗi subtask = 1 dòng) */}
             <Card title="Checklist báo cáo">
               <List
                 dataSource={subtasks}
@@ -1122,7 +1095,6 @@ export default function TaskDetailPage() {
               />
             </Card>
 
-            {/* Báo cáo tiến độ (demo) */}
             <Card title="Báo cáo tiến độ">
               <Space direction="vertical">
                 <Text strong>Tiến độ theo subtask</Text>
