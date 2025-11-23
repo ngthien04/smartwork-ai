@@ -21,6 +21,7 @@ import {
   message,
   Tooltip,
   ColorPicker,
+  Popover,
 } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import projectServices from '@/services/projectService';
@@ -164,6 +165,7 @@ export default function ProjectDetailPage() {
   };
 
   const handleSubmitTask = async (values: any) => {
+    console.log('values.labels:', values.labels);
     if (!teamId || !project?._id) {
       message.error('Thiếu team hoặc project');
       return;
@@ -244,38 +246,43 @@ export default function ProjectDetailPage() {
 
 
   const handleQuickCreateLabel = async () => {
-    if (!teamId || !project?._id) {
-      message.error('Thiếu team hoặc project, không thể tạo nhãn');
+    if (!newLabelName.trim()) {
+      message.warning('Nhập tên nhãn trước đã');
       return;
     }
 
-    if (!newLabelName.trim()) {
-      message.error('Nhập tên nhãn trước đã');
+    if (!teamId || !project?._id) {
+      message.error('Thiếu team hoặc project');
       return;
     }
 
     try {
       setCreatingLabel(true);
+
       const res = await labelServices.create({
-        team: teamId,
-        project: project._id,
+        team: teamId,              // 👈 dùng teamId đã useMemo ở trên
+        project: project._id,      // 👈 dùng project hiện tại
         name: newLabelName.trim(),
         color: newLabelColor,
       });
 
-      const created = res.data || res;
+      const created: Label = res.data || res;
 
-      // thêm vào danh sách nhãn đang có
+      // Thêm vào list labels để Select hiển thị
       setLabels((prev) => [...prev, created]);
 
-      // auto chọn nhãn mới cho field labels của taskForm
+      // 🚀 LẤY GIÁ TRỊ labels HIỆN TẠI TRONG FORM (DÙNG taskForm, KHÔNG PHẢI form)
       const current: string[] = taskForm.getFieldValue('labels') || [];
-      taskForm.setFieldsValue({
-        labels: [...current, created._id],
-      });
+
+      // Merge: nếu chưa có thì thêm
+      if (!current.includes(String(created._id))) {
+        taskForm.setFieldsValue({
+          labels: [...current, String(created._id)],
+        });
+      }
 
       setNewLabelName('');
-      message.success('Đã tạo nhãn mới');
+      message.success('Đã tạo nhãn mới và gán vào task');
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Tạo nhãn thất bại');
@@ -283,6 +290,7 @@ export default function ProjectDetailPage() {
       setCreatingLabel(false);
     }
   };
+
 
   if (!project && !loading) {
     return (
@@ -489,56 +497,80 @@ export default function ProjectDetailPage() {
             </Col>
           </Row>
 
-          <Form.Item name="labels" label="Nhãn">
-            <Space direction="vertical" className="w-full">
-              {/* Select nhãn có sẵn */}
-              <Select
-                mode="multiple"
-                placeholder="Chọn nhãn"
-                loading={labelsLoading}
-                allowClear
-              >
-                {labels.map((lb) => (
-                  <Option key={lb._id} value={lb._id}>
-                    {/* hiển thị kèm màu */}
-                    <Tag color={lb.color || 'default'}>{lb.name}</Tag>
-                  </Option>
-                ))}
-              </Select>
+{/* Nhãn */}
+<Form.Item label="Nhãn">
+  <Space direction="vertical" className="w-full">
 
-              {/* 👇 Quick create nhãn mới */}
-              <Space.Compact className="w-full">
-                <Input
-                  placeholder="Tên nhãn mới (VD: Bug, Feature...)"
-                  value={newLabelName}
-                  onChange={(e) => setNewLabelName(e.target.value)}
-                />
-                {/* native color picker: user click chọn, không cần nhớ mã màu */}
-                <input
-                  type="color"
-                  value={newLabelColor}
-                  onChange={(e) => setNewLabelColor(e.target.value)}
-                  style={{
-                    width: 48,
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
-                    background: 'transparent',
-                  }}
-                />
-                <Button
-                  type="default"
-                  loading={creatingLabel}
-                  onClick={handleQuickCreateLabel}
-                >
-                  Thêm nhãn
-                </Button>
-              </Space.Compact>
-              <Text type="secondary" className="text-xs">
-                Gõ tên nhãn mới, chọn màu rồi bấm "Thêm nhãn" để tạo nhanh và gán luôn cho task.
-              </Text>
-            </Space>
-          </Form.Item>
+    {/* Select nhãn – chỉ cái này gắn với field labels */}
+    <Form.Item name="labels" noStyle>
+      <Select
+        mode="multiple"
+        placeholder="Chọn nhãn"
+        loading={labelsLoading}
+        allowClear
+      >
+        {labels.map((lb) => (
+          <Option key={lb._id} value={lb._id}>
+            <Tag color={lb.color || 'default'}>{lb.name}</Tag>
+          </Option>
+        ))}
+      </Select>
+    </Form.Item>
+
+    {/* Tạo nhãn nhanh (KHÔNG buộc vào Form, dùng state newLabelName / newLabelColor) */}
+    <Space.Compact className="w-full" size="large">
+      <Input
+        placeholder="Tên nhãn mới (VD: Bug, Feature...)"
+        value={newLabelName}
+        onChange={(e) => setNewLabelName(e.target.value)}
+        style={{ borderRadius: 6 }}
+      />
+
+      <Popover
+        trigger="click"
+        content={
+          <ColorPicker
+            value={newLabelColor}
+            onChange={(color) => setNewLabelColor(color.toHexString())}
+          />
+        }
+      >
+        <Button
+          style={{
+            width: 46,
+            padding: 0,
+            borderRadius: 6,
+          }}
+        >
+          <div
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              margin: '0 auto',
+              background: newLabelColor,
+              border: '1px solid #ddd',
+            }}
+          />
+        </Button>
+      </Popover>
+
+      <Button
+        type="default"
+        loading={creatingLabel}
+        onClick={handleQuickCreateLabel}
+        style={{ borderRadius: 6 }}
+      >
+        Thêm nhãn
+      </Button>
+    </Space.Compact>
+
+    <Text type="secondary" className="text-xs">
+      Gõ tên nhãn mới, chọn màu rồi bấm "Thêm nhãn" để tạo nhanh và gán luôn cho task.
+    </Text>
+  </Space>
+</Form.Item>
+
         </Form>
       </Modal>
     </div>

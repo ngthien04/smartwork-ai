@@ -33,7 +33,12 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons';
 import type { RcFile } from 'antd/es/upload/interface';
+
 import type { Attachment as TaskAttachment } from '@/types/attachment';
+import type { Subtask } from '@/types/subtask';
+import type { Comment } from '@/types/comment';
+import type { Activity } from '@/types/activity';
+
 import taskServices from '@/services/taskServices';
 import projectServices from '@/services/projectService';
 import subtaskServices from '@/services/subtaskServices';
@@ -41,12 +46,9 @@ import commentServices from '@/services/commentServices';
 import activityServices from '@/services/activityServices';
 import labelServices, { type Label } from '@/services/labelServices';
 
-import type { Subtask } from '@/types/subtask';
-import type { Comment } from '@/types/comment';
-import type { Activity } from '@/types/activity';
-
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
+const { Option } = Select;
 
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -56,11 +58,9 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<any | null>(null);
   const [project, setProject] = useState<any | null>(null);
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
-  const [uploading, setUploading] = useState(false);
 
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [subtasksLoading, setSubtasksLoading] = useState(false);
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [creatingSubtask, setCreatingSubtask] = useState(false);
 
   const [comments, setComments] = useState<Comment[]>([]);
@@ -87,7 +87,7 @@ export default function TaskDetailPage() {
   const [editingLabel, setEditingLabel] = useState<Label | null>(null);
   const [savingLabel, setSavingLabel] = useState(false);
 
-
+  // ========== LOAD TASK + PROJECT ==========
   useEffect(() => {
     const fetchData = async () => {
       if (!taskId) return;
@@ -128,6 +128,7 @@ export default function TaskDetailPage() {
     fetchData();
   }, [taskId]);
 
+  // ========== LOAD SUBTASKS + COMMENTS + ACTIVITIES ==========
   useEffect(() => {
     if (!task || (!task._id && !task.id)) return;
     const id = task.id || task._id;
@@ -180,6 +181,7 @@ export default function TaskDetailPage() {
     loadActivities();
   }, [task]);
 
+  // ========== AUTO-REFRESH ACTIVITIES ==========
   useEffect(() => {
     if (!task?.id) return;
 
@@ -188,11 +190,12 @@ export default function TaskDetailPage() {
         .list({ targetType: 'task', targetId: task.id, limit: 20 })
         .then((res) => setActivities(res.data.items || res.data || []))
         .catch((err) => console.error(err));
-    }, 5000); // mỗi 5s
+    }, 5000);
 
-    return () => clearInterval(interval); 
+    return () => clearInterval(interval);
   }, [task?.id]);
 
+  // ========== LOAD LABELS THEO PROJECT ==========
   useEffect(() => {
     const loadLabels = async () => {
       if (!project) return;
@@ -219,6 +222,45 @@ export default function TaskDetailPage() {
     loadLabels();
   }, [project]);
 
+  // ========== LABEL IDS TRÊN TASK ==========
+  const taskLabelIds = useMemo(() => {
+    const raw = (task as any)?.labels;
+
+    if (!raw) return [];
+
+    if (Array.isArray(raw)) {
+      return raw
+        .map((l: any) => String(l?._id || l?.id || l).trim())
+        .filter(Boolean);
+    }
+
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        const arr = Array.isArray(parsed) ? parsed : [parsed];
+        return arr
+          .map((id: any) => String(id).trim())
+          .filter(Boolean);
+      } catch {
+        return String(raw)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+
+    return [];
+  }, [task?.labels]);
+
+  // Chỉ object label thuộc task
+  const taskLabelObjects: Label[] = useMemo(() => {
+    if (!taskLabelIds.length) return [];
+    return taskLabelIds
+      .map((id) => labels.find((lb) => String(lb._id) === id))
+      .filter((x): x is Label => Boolean(x));
+  }, [taskLabelIds, labels]);
+
+  // ========== ASSIGNEES ==========
   const assignees = useMemo(() => {
     if (!task?.assignees) return [];
     return (task.assignees as any[]).map((u) => ({
@@ -229,6 +271,7 @@ export default function TaskDetailPage() {
     }));
   }, [task?.assignees]);
 
+  // ========== SUBTASK PROGRESS ==========
   const subtaskProgress = useMemo(() => {
     if (!subtasks.length) return 0;
     const doneCount = subtasks.filter((s) => s.isDone).length;
@@ -243,7 +286,7 @@ export default function TaskDetailPage() {
     setAttachments((t.attachments as TaskAttachment[]) || []);
   };
 
-
+  // ========== ATTACHMENTS ==========
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!task?.id && !task?._id) return;
     const id = task.id || task._id;
@@ -258,13 +301,32 @@ export default function TaskDetailPage() {
     }
   };
 
+  const attachmentStats = useMemo(() => {
+    const total = attachments.length;
 
+    const subtaskIds = new Set<string>();
+    attachments.forEach((att) => {
+      const st: any = att.subtask;
+      const id =
+        typeof st === 'string'
+          ? st
+          : st?._id || st?.id;
+
+      if (id) subtaskIds.add(String(id));
+    });
+
+    return { total, subtaskCount: subtaskIds.size };
+  }, [attachments]);
+
+  // ========== SUBTASK HANDLERS ==========
   const handleToggleSubtask = async (subtask: Subtask) => {
     try {
       const res = await subtaskServices.toggle(subtask._id || subtask.id);
       const updated = res.data || res;
       setSubtasks((prev) =>
-        prev.map((s) => ((s._id || s.id) === (updated._id || updated.id) ? updated : s)),
+        prev.map((s) =>
+          (s._id || s.id) === (updated._id || updated.id) ? updated : s,
+        ),
       );
     } catch (err: any) {
       console.error(err);
@@ -331,7 +393,7 @@ export default function TaskDetailPage() {
         );
 
         setSubtaskModalOpen(false);
-        setSubtaskFile(null); 
+        setSubtaskFile(null);
         setEditingSubtask(null);
         subtaskForm.resetFields();
         message.success('Cập nhật subtask thành công');
@@ -370,23 +432,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  const attachmentStats = useMemo(() => {
-    const total = attachments.length;
-
-    const subtaskIds = new Set<string>();
-    attachments.forEach((att) => {
-      const st: any = att.subtask;
-      const id =
-        typeof st === 'string'
-          ? st
-          : st?._id || st?.id;
-
-      if (id) subtaskIds.add(String(id));
-    });
-
-    return { total, subtaskCount: subtaskIds.size };
-  }, [attachments]);
-
+  // ========== COMMENT HANDLERS ==========
   const handlePostComment = async () => {
     if (!newComment.trim()) return;
     if (!task?.id && !task?._id) return;
@@ -454,39 +500,50 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleToggleLabelOnTask = async (labelId: string) => {
+  // ========== LABEL HANDLERS ==========
+  const handleSetLabelsForTask = async (nextIds: string[]) => {
     if (!task?.id && !task?._id) return;
     const id = task.id || task._id;
 
-    const currentIds: string[] =
-      (task.labels as any[] | undefined)?.map((l: any) =>
-        String(l?._id || l?.id || l),
-      ) || [];
+    await taskServices.setLabels(id, nextIds);
 
-    let nextIds: string[];
-    if (currentIds.includes(labelId)) {
-      nextIds = currentIds.filter((x) => x !== labelId);
-    } else {
-      nextIds = [...currentIds, labelId];
+    const nextLabelObjs = labels.filter((lb) =>
+      nextIds.includes(String(lb._id)),
+    );
+
+    setTask((prev: any) =>
+      prev ? { ...prev, labels: nextLabelObjs } : prev,
+    );
+  };
+
+  const handleAddLabelToTask = async (labelId: string) => {
+    const id = String(labelId);
+    if (taskLabelIds.includes(id)) return;
+
+    const nextIds = [...taskLabelIds, id];
+    try {
+      await handleSetLabelsForTask(nextIds);
+      message.success('Đã gán nhãn cho task');
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data || 'Gán nhãn thất bại');
     }
+  };
+
+  const handleRemoveLabelFromTask = async (labelId: string) => {
+    const id = String(labelId);
+    const nextIds = taskLabelIds.filter((x) => x !== id);
 
     try {
-      await taskServices.setLabels(id, nextIds);
-
-      // Cập nhật local task.labels dưới dạng object Label đầy đủ
-      const nextLabelObjs = labels.filter((lb) => nextIds.includes(lb._id));
-
-      setTask((prev: any) =>
-        prev ? { ...prev, labels: nextLabelObjs } : prev,
-      );
-
-      message.success('Đã cập nhật nhãn của task');
+      await handleSetLabelsForTask(nextIds);
+      message.success('Đã bỏ nhãn khỏi task');
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Cập nhật nhãn thất bại');
     }
   };
 
+  // ========== ACTIVITIES VIEW MODEL ==========
   const activityItems = useMemo(() => {
     if (!activities.length) return [];
     return activities.map((a) => {
@@ -500,6 +557,7 @@ export default function TaskDetailPage() {
     });
   }, [activities]);
 
+  // ========== EARLY RETURNS ==========
   if (!loading && !task) {
     return (
       <Result
@@ -523,6 +581,7 @@ export default function TaskDetailPage() {
     );
   }
 
+  // ========== RENDER ==========
   return (
     <div className="space-y-4">
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
@@ -537,7 +596,9 @@ export default function TaskDetailPage() {
           </Title>
           <Text type="secondary">
             Thuộc dự án {project?.name ?? 'Chưa gắn dự án'} · Deadline{' '}
-            {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'Chưa đặt'}
+            {task.dueDate
+              ? new Date(task.dueDate).toLocaleDateString()
+              : 'Chưa đặt'}
           </Text>
         </div>
         <Space size="middle" className="mt-3 lg:mt-0">
@@ -547,6 +608,7 @@ export default function TaskDetailPage() {
       </div>
 
       <Row gutter={[24, 24]}>
+        {/* LEFT COLUMN */}
         <Col xs={24} lg={16}>
           <Card title="Thông tin chung">
             <Space direction="vertical" size="middle" className="w-full">
@@ -561,6 +623,7 @@ export default function TaskDetailPage() {
               </div>
               <Divider />
 
+              {/* LABELS - CHỈ HIỆN LABEL CỦA TASK */}
               <div>
                 <Space className="mb-2">
                   <Text type="secondary" className="text-xs">
@@ -577,35 +640,72 @@ export default function TaskDetailPage() {
                   >
                     Quản lý nhãn
                   </Button>
+                  {labelsLoading && (
+                    <Text type="secondary" className="text-xs">
+                      (Đang tải nhãn...)
+                    </Text>
+                  )}
                 </Space>
+
+                <Space direction="vertical" size="small" className="w-full">
+                  {/* Chỉ label của task */}
                   <Space wrap>
-                    {(!task.labels || (task.labels as any[]).length === 0) && (
+                    {taskLabelObjects.length === 0 && (
                       <Text type="secondary" className="text-xs">
                         Task này chưa có nhãn nào.
                       </Text>
                     )}
 
-                    {(task.labels as any[] || []).map((raw: any) => {
-                      const lb =
-                        typeof raw === 'string'
-                          ? labels.find((x) => String(x._id) === String(raw))
-                          : raw;
-
-                      if (!lb) return null;
-
-                      return (
-                        <Tag
-                          key={lb._id}
-                          color={lb.color || 'default'}
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => handleToggleLabelOnTask(lb._id)}
-                        >
-                          {lb.name}
-                        </Tag>
-                      );
-                    })}
+                    {taskLabelObjects.map((lb) => (
+                      <Tag
+                        key={lb._id}
+                        color={lb.color || 'default'}
+                        closable
+                        onClose={(e) => {
+                          e.preventDefault(); // tránh Tag tự remove DOM
+                          handleRemoveLabelFromTask(String(lb._id));
+                        }}
+                        style={{ borderRadius: 4 }}
+                      >
+                        {lb.name}
+                      </Tag>
+                    ))}
                   </Space>
+
+                  {/* Dropdown thêm nhãn mới cho task */}
+                  <Space>
+                    <Select
+                      size="small"
+                      placeholder="Thêm nhãn..."
+                      style={{ minWidth: 160 }}
+                      value={undefined}
+                      onChange={handleAddLabelToTask}
+                      loading={labelsLoading}
+                    >
+                      {labels
+                        .filter(
+                          (lb) => !taskLabelIds.includes(String(lb._id)),
+                        )
+                        .map((lb) => (
+                          <Option key={lb._id} value={lb._id}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                background: lb.color || '#d9d9d9',
+                                marginRight: 6,
+                              }}
+                            />
+                            {lb.name}
+                          </Option>
+                        ))}
+                    </Select>
+                  </Space>
+                </Space>
               </div>
+
               <Divider />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -651,6 +751,7 @@ export default function TaskDetailPage() {
             </Space>
           </Card>
 
+          {/* SUBTASKS */}
           <Card
             title="Subtasks"
             className="mt-4"
@@ -659,7 +760,7 @@ export default function TaskDetailPage() {
                 type="primary"
                 size="small"
                 loading={creatingSubtask}
-                onClick={() => handleOpenSubtaskModal()}   
+                onClick={() => handleOpenSubtaskModal()}
               >
                 Thêm subtask mới
               </Button>
@@ -713,174 +814,198 @@ export default function TaskDetailPage() {
             </Space>
           </Card>
 
+          {/* MODALS + ATTACHMENTS + ACTIVITIES */}
           <Row gutter={[16, 25]} className="mt-4">
+            {/* LABEL MODAL: tạo/sửa/xoá nhãn (project) */}
             <Modal
-                open={labelModalOpen}
-                title={editingLabel ? 'Sửa nhãn' : 'Quản lý nhãn'}
-                onCancel={() => {
-                  setLabelModalOpen(false);
-                  setEditingLabel(null);
-                  labelForm.resetFields();
-                }}
-                onOk={async () => {
-                  try {
-                    const values = await labelForm.validateFields();
-                    setSavingLabel(true);
+              open={labelModalOpen}
+              title={editingLabel ? 'Sửa nhãn' : 'Quản lý nhãn'}
+              onCancel={() => {
+                setLabelModalOpen(false);
+                setEditingLabel(null);
+                labelForm.resetFields();
+              }}
+              onOk={async () => {
+                try {
+                  const values = await labelForm.validateFields();
+                  setSavingLabel(true);
 
-                    const team = project?.team;
-                    const teamId = typeof team === 'string' ? team : team?._id;
+                  const team = project?.team;
+                  const teamId = typeof team === 'string' ? team : team?._id;
 
-                    if (!teamId) {
-                      message.error('Project không có team, không thể lưu nhãn');
-                      return;
-                    }
-
-                    if (editingLabel) {
-                      const res = await labelServices.update(editingLabel._id, {
-                        name: values.name,
-                        color: values.color,
-                        description: values.description,
-                      });
-                      const updated = res.data || res;
-                      setLabels((prev) =>
-                        prev.map((lb) => (lb._id === updated._id ? updated : lb)),
-                      );
-                      message.success('Đã cập nhật nhãn');
-                    } else {
-                      const res = await labelServices.create({
-                        team: teamId,
-                        project: project?._id || project?.id,
-                        name: values.name,
-                        color: values.color,
-                        description: values.description,
-                      });
-                      const created = res.data || res;
-                      setLabels((prev) => [...prev, created]);
-                      message.success('Đã tạo nhãn mới');
-                    }
-
-                    labelForm.resetFields();
-                    setEditingLabel(null);
-                    setLabelModalOpen(false);
-                  } catch (err: any) {
-                    if (err?.response?.data) message.error(err.response.data);
-                    else if (!err?.errorFields) message.error('Lưu nhãn thất bại');
-                  } finally {
-                    setSavingLabel(false);
+                  if (!teamId) {
+                    message.error(
+                      'Project không có team, không thể lưu nhãn',
+                    );
+                    return;
                   }
-                }}
-                confirmLoading={savingLabel}
-                okText={editingLabel ? 'Lưu nhãn' : 'Tạo nhãn'}
-              >
-                <Row gutter={[16, 16]}>
-                  <Col span={12}>
-                    <Form form={labelForm} layout="vertical">
-                      <Form.Item
-                        name="name"
-                        label="Tên nhãn"
-                        rules={[{ required: true, message: 'Nhập tên nhãn' }]}
-                      >
-                        <Input placeholder="VD: Bug, Feature, Urgent..." />
-                      </Form.Item>
-                      <Form.Item name="color" label="Màu (hex)">
-                        <input
-                          type="color"
-                          value={labelForm.getFieldValue('color') || '#52c41a'}
-                          onChange={(e) => {
-                            labelForm.setFieldsValue({ color: e.target.value });
-                          }}
-                          style={{ width: '100%', height: 32, border: 'none', padding: 0, cursor: 'pointer' }}
-                        />
-                      </Form.Item>
-                      <Form.Item name="description" label="Mô tả">
-                        <Input.TextArea rows={3} placeholder="Nhãn dùng cho loại công việc nào..." />
-                      </Form.Item>
-                    </Form>
-                  </Col>
-                  <Col span={12}>
-                    <Text strong className="block mb-2">
-                      Danh sách nhãn
-                    </Text>
-                    <List
-                      size="small"
-                      bordered
-                      dataSource={labels}
-                      locale={{ emptyText: 'Chưa có nhãn' }}
-                      renderItem={(lb) => (
-                        <List.Item
-                          actions={[
-                            <Button
-                              key="edit"
-                              type="link"
-                              size="small"
-                              onClick={() => {
-                                setEditingLabel(lb);
-                                labelForm.setFieldsValue({
-                                  name: lb.name,
-                                  color: lb.color,
-                                  description: lb.description,
-                                });
-                              }}
-                            >
-                              Sửa
-                            </Button>,
-                            <Popconfirm
-                              key="delete"
-                              title="Xoá nhãn này?"
-                              okText="Xoá"
-                              cancelText="Huỷ"
-                              onConfirm={async () => {
-                                try {
-                                  await labelServices.remove(lb._id);
-                                  setLabels((prev) =>
-                                    prev.filter((x) => x._id !== lb._id),
+
+                  if (editingLabel) {
+                    // UPDATE LABEL
+                    const res = await labelServices.update(editingLabel._id, {
+                      name: values.name,
+                      color: values.color,
+                      description: values.description,
+                    });
+                    const updated = res.data || res;
+
+                    setLabels((prev) =>
+                      prev.map((lb) =>
+                        lb._id === updated._id ? updated : lb,
+                      ),
+                    );
+                    message.success('Đã cập nhật nhãn');
+                  } else {
+                    // CREATE LABEL
+                    const res = await labelServices.create({
+                      team: teamId,
+                      project: project?._id || project?.id,
+                      name: values.name,
+                      color: values.color,
+                      description: values.description,
+                    });
+                    const created = res.data || res;
+                    setLabels((prev) => [...prev, created]);
+                    message.success('Đã tạo nhãn mới');
+                  }
+
+                  labelForm.resetFields();
+                  setEditingLabel(null);
+                  setLabelModalOpen(false);
+                } catch (err: any) {
+                  if (err?.response?.data) message.error(err.response.data);
+                  else if (!err?.errorFields)
+                    message.error('Lưu nhãn thất bại');
+                } finally {
+                  setSavingLabel(false);
+                }
+              }}
+              confirmLoading={savingLabel}
+              okText={editingLabel ? 'Lưu nhãn' : 'Tạo nhãn'}
+            >
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Form form={labelForm} layout="vertical">
+                    <Form.Item
+                      name="name"
+                      label="Tên nhãn"
+                      rules={[{ required: true, message: 'Nhập tên nhãn' }]}
+                    >
+                      <Input placeholder="VD: Bug, Feature, Urgent..." />
+                    </Form.Item>
+                    <Form.Item name="color" label="Màu (hex)">
+                      <input
+                        type="color"
+                        value={labelForm.getFieldValue('color') || '#52c41a'}
+                        onChange={(e) => {
+                          labelForm.setFieldsValue({ color: e.target.value });
+                        }}
+                        style={{
+                          width: '100%',
+                          height: 32,
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item name="description" label="Mô tả">
+                      <Input.TextArea
+                        rows={3}
+                        placeholder="Nhãn dùng cho loại công việc nào..."
+                      />
+                    </Form.Item>
+                  </Form>
+                </Col>
+                <Col span={12}>
+                  <Text strong className="block mb-2">
+                    Danh sách nhãn
+                  </Text>
+                  <List
+                    size="small"
+                    bordered
+                    dataSource={labels}
+                    locale={{ emptyText: 'Chưa có nhãn' }}
+                    renderItem={(lb) => (
+                      <List.Item
+                        actions={[
+                          <Button
+                            key="edit"
+                            type="link"
+                            size="small"
+                            onClick={() => {
+                              setEditingLabel(lb);
+                              labelForm.setFieldsValue({
+                                name: lb.name,
+                                color: lb.color,
+                                description: lb.description,
+                              });
+                            }}
+                          >
+                            Sửa
+                          </Button>,
+                          <Popconfirm
+                            key="delete"
+                            title="Xoá nhãn này?"
+                            okText="Xoá"
+                            cancelText="Huỷ"
+                            onConfirm={async () => {
+                              try {
+                                await labelServices.remove(lb._id);
+                                setLabels((prev) =>
+                                  prev.filter((x) => x._id !== lb._id),
+                                );
+
+                                // Nếu task đang gắn nhãn này thì bỏ ra
+                                setTask((prev: any) => {
+                                  if (!prev?.labels) return prev;
+                                  const next = (prev.labels as any[]).filter(
+                                    (l: any) =>
+                                      String(
+                                        l?._id || l?.id || l,
+                                      ) !== String(lb._id),
                                   );
+                                  return { ...prev, labels: next };
+                                });
 
-                                  // Nếu task đang gắn nhãn này thì bỏ ra
-                                  setTask((prev: any) => {
-                                    if (!prev?.labels) return prev;
-                                    const next = (prev.labels as any[]).filter(
-                                      (l: any) =>
-                                        String(l?._id || l?.id || l) !== String(lb._id),
-                                    );
-                                    return { ...prev, labels: next };
-                                  });
+                                message.success('Đã xoá nhãn');
+                              } catch (err: any) {
+                                console.error(err);
+                                message.error(
+                                  err?.response?.data || 'Xoá nhãn thất bại',
+                                );
+                              }
+                            }}
+                          >
+                            <Button type="link" danger size="small">
+                              Xoá
+                            </Button>
+                          </Popconfirm>,
+                        ]}
+                      >
+                        <Space direction="vertical" size={0}>
+                          <Tag color={lb.color || 'default'}>{lb.name}</Tag>
+                          {lb.description && (
+                            <Text type="secondary" className="text-xs">
+                              {lb.description}
+                            </Text>
+                          )}
+                        </Space>
+                      </List.Item>
+                    )}
+                  />
+                </Col>
+              </Row>
+            </Modal>
 
-                                  message.success('Đã xoá nhãn');
-                                } catch (err: any) {
-                                  console.error(err);
-                                  message.error(err?.response?.data || 'Xoá nhãn thất bại');
-                                }
-                              }}
-                            >
-                              <Button type="link" danger size="small">
-                                Xoá
-                              </Button>
-                            </Popconfirm>,
-                          ]}
-                        >
-                          <Space direction="vertical" size={0}>
-                            <Tag color={lb.color || 'default'}>{lb.name}</Tag>
-                            {lb.description && (
-                              <Text type="secondary" className="text-xs">
-                                {lb.description}
-                              </Text>
-                            )}
-                          </Space>
-                        </List.Item>
-                      )}
-                    />
-                  </Col>
-                </Row>
-              </Modal>
-
+            {/* SUBTASK MODAL */}
             <Modal
               title={editingSubtask ? 'Sửa subtask' : 'Tạo subtask mới'}
               open={subtaskModalOpen}
               onCancel={() => {
                 setSubtaskModalOpen(false);
                 setSubtaskFile(null);
-                setEditingSubtask(null); 
+                setEditingSubtask(null);
               }}
               onOk={handleSubmitSubtask}
               confirmLoading={creatingSubtask}
@@ -925,6 +1050,8 @@ export default function TaskDetailPage() {
                 </Form.Item>
               </Form>
             </Modal>
+
+            {/* ATTACHMENTS */}
             <Col span={12}>
               <Card
                 title={
@@ -934,7 +1061,8 @@ export default function TaskDetailPage() {
                       Attachments
                       {attachmentStats.total > 0 && (
                         <Text type="secondary" className="ml-1 text-xs">
-                          ({attachmentStats.total} tệp · {attachmentStats.subtaskCount} subtask)
+                          ({attachmentStats.total} tệp ·{' '}
+                          {attachmentStats.subtaskCount} subtask)
                         </Text>
                       )}
                     </span>
@@ -972,9 +1100,16 @@ export default function TaskDetailPage() {
                               title="Xoá tệp này?"
                               okText="Xoá"
                               cancelText="Huỷ"
-                              onConfirm={() => handleDeleteAttachment(String(att._id))}
+                              onConfirm={() =>
+                                handleDeleteAttachment(String(att._id))
+                              }
                             >
-                              <Button type="link" danger icon={<DeleteOutlined />} size="small">
+                              <Button
+                                type="link"
+                                danger
+                                icon={<DeleteOutlined />}
+                                size="small"
+                              >
                                 Xoá
                               </Button>
                             </Popconfirm>
@@ -988,7 +1123,9 @@ export default function TaskDetailPage() {
                               {att.subtask && (
                                 <Text type="secondary" className="text-xs">
                                   Thuộc subtask:{' '}
-                                  <b>{(att.subtask as any).title || 'Không rõ'}</b>
+                                  <b>
+                                    {(att.subtask as any).title || 'Không rõ'}
+                                  </b>
                                 </Text>
                               )}
                             </Space>
@@ -1009,6 +1146,8 @@ export default function TaskDetailPage() {
                 )}
               </Card>
             </Col>
+
+            {/* ACTIVITIES */}
             <Col span={12}>
               <Card
                 title="Hoạt động gần đây"
@@ -1025,7 +1164,9 @@ export default function TaskDetailPage() {
                         ),
                         children: (
                           <div className="break-words leading-relaxed">
-                            <Text className="text-sm text-gray-700">{item.children}</Text>
+                            <Text className="text-sm text-gray-700">
+                              {item.children}
+                            </Text>
                           </div>
                         ),
                       }))}
@@ -1034,7 +1175,9 @@ export default function TaskDetailPage() {
                 </div>
               </Card>
             </Col>
-          </Row >
+          </Row>
+
+          {/* COMMENTS */}
           <Card
             title="Bình luận"
             className="mt-4"
@@ -1050,7 +1193,9 @@ export default function TaskDetailPage() {
                     message={
                       <>
                         Đang trả lời bình luận của{' '}
-                        <b>{(replyingTo.author as any)?.name || 'ai đó'}</b>
+                        <b>
+                          {(replyingTo.author as any)?.name || 'ai đó'}
+                        </b>
                       </>
                     }
                     action={
@@ -1167,7 +1312,9 @@ export default function TaskDetailPage() {
                         }
                         title={
                           <Space>
-                            <Text strong>{author?.name || 'Người dùng'}</Text>
+                            <Text strong>
+                              {author?.name || 'Người dùng'}
+                            </Text>
                             {comment.edited && (
                               <Tag color="default" className="text-xs">
                                 Đã chỉnh sửa
@@ -1180,19 +1327,26 @@ export default function TaskDetailPage() {
                         }
                         description={
                           <>
-                            <Paragraph className="mb-1" style={{ whiteSpace: 'pre-wrap' }}>
+                            <Paragraph
+                              className="mb-1"
+                              style={{ whiteSpace: 'pre-wrap' }}
+                            >
                               {comment.content}
                             </Paragraph>
 
-                            {Array.isArray(comment.mentions) && comment.mentions.length > 0 && (
-                              <Text type="secondary" className="text-xs">
-                                Nhắc tới:{' '}
-                                {comment.mentions
-                                  .map((m: any) => m?.name)
-                                  .filter(Boolean)
-                                  .join(', ')}
-                              </Text>
-                            )}
+                            {Array.isArray(comment.mentions) &&
+                              comment.mentions.length > 0 && (
+                                <Text
+                                  type="secondary"
+                                  className="text-xs"
+                                >
+                                  Nhắc tới:{' '}
+                                  {comment.mentions
+                                    .map((m: any) => m?.name)
+                                    .filter(Boolean)
+                                    .join(', ')}
+                                </Text>
+                              )}
                           </>
                         }
                       />
@@ -1204,9 +1358,10 @@ export default function TaskDetailPage() {
           </Card>
         </Col>
 
+        {/* RIGHT COLUMN */}
         <Col xs={24} lg={8}>
           <Space direction="vertical" size="large" className="w-full">
-            {/* AI Insights (tạm mock cứng vì chưa có API riêng) */}
+            {/* AI INSIGHTS (mock) */}
             <Card
               title="AI Insights"
               extra={<RobotOutlined />}
@@ -1231,6 +1386,7 @@ export default function TaskDetailPage() {
               />
             </Card>
 
+            {/* CHECKLIST = subtasks view khác */}
             <Card title="Checklist báo cáo">
               <List
                 dataSource={subtasks}
@@ -1274,6 +1430,7 @@ export default function TaskDetailPage() {
               />
             </Card>
 
+            {/* PROGRESS CARD */}
             <Card title="Báo cáo tiến độ">
               <Space direction="vertical">
                 <Text strong>Tiến độ theo subtask</Text>

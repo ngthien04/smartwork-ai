@@ -347,6 +347,8 @@ router.post(
       .map((v) => String(v).trim())
       .filter((id) => mongoose.isValidObjectId(id))        // CHỈ giữ id hợp lệ
       .map((id) => new mongoose.Types.ObjectId(id));
+    
+    console.log('Labels to save:', labels);
 
     // ----- Tạo task -----
     const doc = await TaskModel.create({
