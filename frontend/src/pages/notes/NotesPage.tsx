@@ -1,5 +1,5 @@
 // src/pages/notes/NotesPage.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   Row,
   Col,
@@ -19,16 +19,11 @@ import {
   EditOutlined,
   DeleteOutlined,
   RobotOutlined,
-  BoldOutlined,
-  ItalicOutlined,
-  OrderedListOutlined,
-  CodeOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { noteServices } from '@/services/noteServices';
 
 const { Title, Text } = Typography;
@@ -44,7 +39,9 @@ type Note = {
   updatedAt: string;
 };
 
-const Markdown: React.FC<any> = ReactMarkdown as any;
+// ReactMarkdown v9 không chấp nhận className trực tiếp, nên mình wrap nó lại
+const Markdown: React.FC<React.ComponentProps<typeof ReactMarkdown>> =
+  ReactMarkdown as any;
 
 export default function NotesPage() {
   const { t } = useTranslation();
@@ -55,10 +52,6 @@ export default function NotesPage() {
 
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
-
-  // state riêng cho content để dễ chỉnh text + selection
-  const [contentValue, setContentValue] = useState('');
-  const contentRef = useRef<TextAreaRef | null>(null);
 
   // ===== Fetch notes =====
   const { data: notesData, isLoading } = useQuery<Note[]>({
@@ -77,7 +70,6 @@ export default function NotesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
       form.resetFields();
-      setContentValue('');
       setIsModalOpen(false);
     },
   });
@@ -88,7 +80,6 @@ export default function NotesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
       form.resetFields();
-      setContentValue('');
       setIsModalOpen(false);
     },
   });
@@ -118,7 +109,6 @@ export default function NotesPage() {
   const handleCreateNote = () => {
     setEditingNote(null);
     form.resetFields();
-    setContentValue('');
     setIsModalOpen(true);
   };
 
@@ -129,19 +119,19 @@ export default function NotesPage() {
       content: note.content,
       tags: note.tags?.join(', ') || '',
     });
-    setContentValue(note.content || '');
     setIsModalOpen(true);
   };
 
   const handleDeleteNote = (noteId: string) => {
     Modal.confirm({
       title: 'Xác nhận xóa',
-      content: 'Bạn có chắc chắn muốn xóa ghi chú này không?',
+      content: 'Bạn có chắc chắn muốn xóa ghi chú này?',
       onOk: () => deleteNoteMutation.mutate(noteId),
     });
   };
 
   const handleModalSubmit = (values: any) => {
+    // Chuyển "tag1, tag2" -> ["tag1", "tag2"]
     const tagsArray: string[] =
       typeof values.tags === 'string'
         ? values.tags
@@ -167,65 +157,6 @@ export default function NotesPage() {
 
   const handleAiSummarize = (noteId: string) => {
     summarizeMutation.mutate(noteId);
-  };
-
-  // ===== Markdown toolbar helpers =====
-  const applyWrapper = (wrapper: string) => {
-    const textarea = contentRef.current?.resizableTextArea?.textArea;
-    if (!textarea) return;
-
-    const { selectionStart, selectionEnd, value } = textarea;
-    const selected = value.slice(selectionStart, selectionEnd);
-    const before = value.slice(0, selectionStart);
-    const after = value.slice(selectionEnd);
-
-    const newSelected = selected || 'text';
-    const newValue = `${before}${wrapper}${newSelected}${wrapper}${after}`;
-
-    setContentValue(newValue);
-    form.setFieldsValue({ content: newValue });
-
-    // đặt lại selection cho đẹp
-    const pos = selectionStart + wrapper.length;
-    const endPos = pos + newSelected.length;
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(pos, endPos);
-    }, 0);
-  };
-
-  const applyInlineCode = () => {
-    applyWrapper('`');
-  };
-
-  const applyBold = () => {
-    applyWrapper('**');
-  };
-
-  const applyItalic = () => {
-    applyWrapper('_');
-  };
-
-  const insertBullet = () => {
-    const textarea = contentRef.current?.resizableTextArea?.textArea;
-    if (!textarea) return;
-
-    const { selectionStart, selectionEnd, value } = textarea;
-    const before = value.slice(0, selectionStart);
-    const after = value.slice(selectionEnd);
-
-    const prefix = before.endsWith('\n') || selectionStart === 0 ? '' : '\n';
-    const newText = `${prefix}- `;
-    const newValue = `${before}${newText}${after}`;
-
-    setContentValue(newValue);
-    form.setFieldsValue({ content: newValue });
-
-    const pos = selectionStart + newText.length;
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(pos, pos);
-    }, 0);
   };
 
   return (
@@ -305,10 +236,7 @@ export default function NotesPage() {
                     }
                     description={
                       <div>
-                        <Text
-                          type="secondary"
-                          className="text-sm block mb-2"
-                        >
+                        <Text type="secondary" className="text-sm block mb-2">
                           {note.content.length > 100
                             ? `${note.content.substring(0, 100)}...`
                             : note.content}
@@ -364,12 +292,12 @@ export default function NotesPage() {
                 </div>
 
                 <div className="border-t pt-4">
-                  <Markdown
-                    remarkPlugins={[remarkGfm]}
-                    className="prose max-w-none"
-                  >
-                    {selectedNote.content}
-                  </Markdown>
+                  {/* ✅ ReactMarkdown v9: không truyền className trực tiếp */}
+                  <div className="prose max-w-none">
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {selectedNote.content}
+                    </Markdown>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -394,11 +322,7 @@ export default function NotesPage() {
         width={800}
         destroyOnClose
       >
-        <Form
-          layout="vertical"
-          form={form}
-          onFinish={handleModalSubmit}
-        >
+        <Form layout="vertical" form={form} onFinish={handleModalSubmit}>
           <Form.Item
             name="title"
             label={t('notes.noteTitle')}
@@ -412,54 +336,14 @@ export default function NotesPage() {
             label={t('notes.noteContent')}
             rules={[{ required: true, message: 'Vui lòng nhập nội dung' }]}
           >
-            <>
-              {/* Toolbar Markdown nhỏ nhỏ */}
-              <Space size="small" className="mb-2">
-                <Button
-                  size="small"
-                  icon={<BoldOutlined />}
-                  onClick={applyBold}
-                >
-                  Đậm
-                </Button>
-                <Button
-                  size="small"
-                  icon={<ItalicOutlined />}
-                  onClick={applyItalic}
-                >
-                  Nghiêng
-                </Button>
-                <Button
-                  size="small"
-                  icon={<CodeOutlined />}
-                  onClick={applyInlineCode}
-                >
-                  Code
-                </Button>
-                <Button
-                  size="small"
-                  icon={<OrderedListOutlined />}
-                  onClick={insertBullet}
-                >
-                  Bullet
-                </Button>
-              </Space>
-
-              <TextArea
-                rows={12}
-                placeholder="Nhập nội dung ghi chú (hỗ trợ Markdown)..."
-                ref={contentRef}
-                value={contentValue}
-                onChange={(e) => {
-                  setContentValue(e.target.value);
-                  form.setFieldsValue({ content: e.target.value });
-                }}
-              />
-            </>
+            <TextArea
+              rows={12}
+              placeholder="Nhập nội dung ghi chú (hỗ trợ **Markdown**, _italic_, danh sách, v.v.)..."
+            />
           </Form.Item>
 
           <Form.Item name="tags" label="Thẻ">
-            <Input placeholder="Nhập thẻ, cách nhau bằng dấu phẩy" />
+            <Input placeholder="Nhập thẻ, cách nhau bằng dấu phẩy (VD: học, công việc, ý tưởng)" />
           </Form.Item>
 
           <Form.Item className="mb-0">
@@ -471,8 +355,7 @@ export default function NotesPage() {
                 type="primary"
                 htmlType="submit"
                 loading={
-                  createNoteMutation.isPending ||
-                  updateNoteMutation.isPending
+                  createNoteMutation.isPending || updateNoteMutation.isPending
                 }
               >
                 {t('common.save')}
