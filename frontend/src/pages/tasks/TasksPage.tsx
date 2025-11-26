@@ -39,13 +39,19 @@ type Filters = {
   status: 'all' | 'backlog' | 'todo' | 'in_progress' | 'done';
   priority: 'all' | 'low' | 'normal' | 'high' | 'urgent';
   assignee: 'all' | string;
+  label: 'all' | string;
 };
 
-// kiểu đơn giản cho assignee option
 type AssigneeOption = {
   id: string;
   name: string;
   avatarUrl?: string;
+};
+
+type LabelOption = {
+  id: string;
+  name: string;
+  color?: string;
 };
 
 export default function TasksPage() {
@@ -60,6 +66,7 @@ export default function TasksPage() {
     status: 'all',
     priority: 'all',
     assignee: 'all',
+    label: 'all',
   });
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -113,6 +120,26 @@ export default function TasksPage() {
     return Array.from(map.values());
   }, [tasks]);
 
+  // ===================== BUILD LABEL OPTIONS TỪ TASK THẬT =====================
+  const labelOptions: LabelOption[] = useMemo(() => {
+    const map = new Map<string, LabelOption>();
+
+    tasks.forEach((task) => {
+      (task as any).labels?.forEach((lb: any) => {
+        const id = String(lb?._id || lb?.id || lb);
+        if (!id) return;
+        const name = lb?.name || id;
+        const color = lb?.color;
+
+        if (!map.has(id)) {
+          map.set(id, { id, name, color });
+        }
+      });
+    });
+
+    return Array.from(map.values());
+  }, [tasks]);
+
   // ===================== FILTER CLIENT =====================
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -134,11 +161,19 @@ export default function TasksPage() {
             String((a as any).id || (a as any)._id || a) === filters.assignee,
         );
 
+      const matchesLabel =
+        filters.label === 'all' ||
+        (task as any).labels?.some(
+          (lb: any) =>
+            String(lb?.id || lb?._id || lb) === filters.label,
+        );
+
       return (
         matchesSearch &&
         matchesStatus &&
         matchesPriority &&
-        matchesAssignee
+        matchesAssignee &&
+        matchesLabel
       );
     });
   }, [filters, tasks]);
@@ -146,7 +181,9 @@ export default function TasksPage() {
   // ===================== STATS =====================
   const stats = useMemo(() => {
     const total = tasks.length;
-    const inProgress = tasks.filter((task) => task.status === 'in_progress').length;
+    const inProgress = tasks.filter(
+      (task) => task.status === 'in_progress',
+    ).length;
     const done = tasks.filter((task) => task.status === 'done').length;
     return { total, inProgress, done };
   }, [tasks]);
@@ -163,7 +200,8 @@ export default function TasksPage() {
 
     const payload: any = {};
     if (typeof updates.status !== 'undefined') payload.status = updates.status;
-    if (typeof updates.priority !== 'undefined') payload.priority = updates.priority;
+    if (typeof updates.priority !== 'undefined')
+      payload.priority = updates.priority;
     if (typeof updates.title !== 'undefined') payload.title = updates.title;
     if (typeof updates.description !== 'undefined')
       payload.description = updates.description;
@@ -226,7 +264,11 @@ export default function TasksPage() {
           </Text>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={handleReload} loading={loading}>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={handleReload}
+            loading={loading}
+          >
             Reload
           </Button>
           <Button
@@ -250,7 +292,10 @@ export default function TasksPage() {
                   prefix={<SearchOutlined />}
                   value={filters.search}
                   onChange={(event) =>
-                    setFilters((prev) => ({ ...prev, search: event.target.value }))
+                    setFilters((prev) => ({
+                      ...prev,
+                      search: event.target.value,
+                    }))
                   }
                 />
 
@@ -280,7 +325,7 @@ export default function TasksPage() {
                   <Option value="urgent">Khẩn cấp</Option>
                 </Select>
 
-                {/* Bỏ filter label, chỉ còn filter assignee bằng user thật */}
+                {/* Filter theo assignee */}
                 <Select
                   value={filters.assignee}
                   onChange={(value) =>
@@ -293,6 +338,28 @@ export default function TasksPage() {
                   {assigneeOptions.map((user) => (
                     <Option key={user.id} value={user.id}>
                       {user.name}
+                    </Option>
+                  ))}
+                </Select>
+
+                {/* Filter theo label */}
+                <Select
+                  value={filters.label}
+                  onChange={(value) =>
+                    setFilters((prev) => ({ ...prev, label: value }))
+                  }
+                  placeholder="Lọc theo nhãn"
+                  allowClear={false}
+                >
+                  <Option value="all">Mọi nhãn</Option>
+                  {labelOptions.map((lb) => (
+                    <Option key={lb.id} value={lb.id}>
+                      <Tag
+                        color={lb.color || 'default'}
+                        style={{ marginRight: 4 }}
+                      >
+                        {lb.name}
+                      </Tag>
                     </Option>
                   ))}
                 </Select>

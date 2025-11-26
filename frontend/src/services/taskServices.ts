@@ -1,5 +1,4 @@
 import api from './api';
-import type { RcFile } from 'antd/es/upload/interface';
 import type { Label } from './labelServices';
 
 

@@ -10,7 +10,6 @@ import {
   Statistic,
   List,
   Result,
-  Progress,
   Space,
   Alert,
   Modal,

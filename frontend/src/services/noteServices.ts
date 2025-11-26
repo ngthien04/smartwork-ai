@@ -1,46 +1,37 @@
 // src/services/noteServices.ts
-import { fetcher } from '@/api/fetcher';
-import type { Note, PaginatedResponse, ApiResponse } from '@/types';
+import api from './api';
+
+export type NotePayload = {
+  title: string;
+  content: string;
+  tags?: string[] | string; // chấp nhận cả array hoặc "a,b,c"
+};
+
+const baseUrl = '/notes'; 
 
 export const noteServices = {
-  // Lấy danh sách notes với filter
-  list: async (params?: {
-    q?: string;
-    tag?: string;
-    page?: number;
-    size?: number;
-  }): Promise<PaginatedResponse<Note>> => {
-    const { data } = await fetcher.get('/notes', { params });
-    return data;
+  list(params?: { q?: string }) {
+    // => gọi GET /api/notes?q=...
+    return api.get(baseUrl, { params });
   },
 
-  // Tạo note mới
-  create: async (noteData: Partial<Note>): Promise<ApiResponse<Note>> => {
-    const { data } = await fetcher.post('/notes', noteData);
-    return data;
+  create(data: NotePayload) {
+    // => POST /api/notes
+    return api.post(baseUrl, data);
   },
 
-  // Cập nhật note
-  update: async (id: string, noteData: Partial<Note>): Promise<ApiResponse<Note>> => {
-    const { data } = await fetcher.put(`/notes/${id}`, noteData);
-    return data;
+  update(id: string, data: Partial<NotePayload>) {
+    // => PUT /api/notes/:id
+    return api.put(`${baseUrl}/${id}`, data);
   },
 
-  // Xóa note
-  remove: async (id: string): Promise<ApiResponse<void>> => {
-    const { data } = await fetcher.delete(`/notes/${id}`);
-    return data;
+  remove(id: string) {
+    // => DELETE /api/notes/:id
+    return api.delete(`${baseUrl}/${id}`);
   },
 
-  // AI tóm tắt note
-  aiSummarize: async (id: string): Promise<ApiResponse<{ summary: string; checklist: string[] }>> => {
-    const { data } = await fetcher.post(`/notes/${id}/ai-summarize`);
-    return data;
-  },
-
-  // Tìm kiếm trong nội dung notes
-  search: async (query: string): Promise<ApiResponse<Note[]>> => {
-    const { data } = await fetcher.get('/notes/search', { params: { q: query } });
-    return data;
+  aiSummarize(id: string) {
+    // => POST /api/notes/:id/ai/summary
+    return api.post(`${baseUrl}/${id}/ai/summary`);
   },
 };
