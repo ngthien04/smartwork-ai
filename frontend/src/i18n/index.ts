@@ -1,12 +1,12 @@
-// src/i18n/index.ts
+
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-// Translation resources
+
 const resources = {
   vi: {
     translation: {
-      // Common
+      
       common: {
         save: 'Lưu',
         cancel: 'Hủy',
@@ -22,7 +22,7 @@ const resources = {
         no: 'Không',
       },
       
-      // Navigation
+      
       nav: {
         dashboard: 'Tổng quan',
         tasks: 'Công việc',
@@ -34,7 +34,7 @@ const resources = {
         settings: 'Cài đặt',
       },
 
-      // Dashboard
+      
       dashboard: {
         title: 'Tổng quan',
         quickActions: 'Thao tác nhanh',
@@ -43,7 +43,7 @@ const resources = {
         aiPlan: 'Lập kế hoạch với AI',
       },
 
-      // Tasks
+      
       tasks: {
         title: 'Quản lý công việc',
         createTask: 'Tạo công việc',
@@ -68,7 +68,7 @@ const resources = {
         },
       },
 
-      // Notes
+      
       notes: {
         title: 'Ghi chú',
         createNote: 'Tạo ghi chú',
@@ -79,7 +79,7 @@ const resources = {
         convertToTasks: 'Chuyển thành công việc',
       },
 
-      // Assistant
+      
       assistant: {
         title: 'Trợ lý AI',
         chatPlaceholder: 'Nhập tin nhắn...',
@@ -89,7 +89,7 @@ const resources = {
         aiSuggestions: 'Đề xuất AI',
       },
 
-      // Calendar
+      
       calendar: {
         title: 'Lịch',
         today: 'Hôm nay',
@@ -103,7 +103,7 @@ const resources = {
         aiSuggestSchedule: 'AI đề xuất lịch',
       },
 
-      // Settings
+      
       settings: {
         title: 'Cài đặt',
         language: 'Ngôn ngữ',
@@ -113,7 +113,7 @@ const resources = {
         logout: 'Đăng xuất',
       },
 
-      // Auth
+      
       auth: {
         login: 'Đăng nhập',
         register: 'Đăng ký',
@@ -126,7 +126,7 @@ const resources = {
         registerSuccess: 'Đăng ký thành công',
       },
 
-      // Command Palette
+      
       commandPalette: {
         placeholder: 'Nhập lệnh hoặc tìm kiếm...',
         noResults: 'Không tìm thấy kết quả',
@@ -140,7 +140,7 @@ const resources = {
   },
   en: {
     translation: {
-      // Common
+      
       common: {
         save: 'Save',
         cancel: 'Cancel',
@@ -156,7 +156,7 @@ const resources = {
         no: 'No',
       },
       
-      // Navigation
+      
       nav: {
         dashboard: 'Dashboard',
         tasks: 'Tasks',
@@ -168,7 +168,7 @@ const resources = {
         settings: 'Settings',
       },
 
-      // Dashboard
+      
       dashboard: {
         title: 'Dashboard',
         quickActions: 'Quick Actions',
@@ -177,7 +177,7 @@ const resources = {
         aiPlan: 'Plan with AI',
       },
 
-      // Tasks
+      
       tasks: {
         title: 'Task Management',
         createTask: 'Create Task',
@@ -202,7 +202,7 @@ const resources = {
         },
       },
 
-      // Notes
+      
       notes: {
         title: 'Notes',
         createNote: 'Create Note',
@@ -213,7 +213,7 @@ const resources = {
         convertToTasks: 'Convert to Tasks',
       },
 
-      // Assistant
+      
       assistant: {
         title: 'AI Assistant',
         chatPlaceholder: 'Type a message...',
@@ -223,7 +223,7 @@ const resources = {
         aiSuggestions: 'AI Suggestions',
       },
 
-      // Calendar
+      
       calendar: {
         title: 'Calendar',
         today: 'Today',
@@ -237,7 +237,7 @@ const resources = {
         aiSuggestSchedule: 'AI Suggest Schedule',
       },
 
-      // Settings
+      
       settings: {
         title: 'Settings',
         language: 'Language',
@@ -247,7 +247,7 @@ const resources = {
         logout: 'Logout',
       },
 
-      // Auth
+      
       auth: {
         login: 'Login',
         register: 'Register',
@@ -260,7 +260,7 @@ const resources = {
         registerSuccess: 'Registration successful',
       },
 
-      // Command Palette
+      
       commandPalette: {
         placeholder: 'Type a command or search...',
         noResults: 'No results found',
@@ -278,7 +278,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'vi', // default language
+    lng: 'vi', 
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false,

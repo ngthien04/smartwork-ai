@@ -1,4 +1,4 @@
-// src/components/command/CommandPalette.tsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Input, List, Typography, Space, Tag } from 'antd';
 import { SearchOutlined, FileTextOutlined, CalendarOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons';
@@ -31,7 +31,7 @@ export default function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const commands: Command[] = useMemo(() => [
-    // Navigation
+    
     {
       id: 'nav-dashboard',
       title: t('nav.dashboard'),
@@ -87,7 +87,7 @@ export default function CommandPalette() {
       category: 'navigation',
     },
     
-    // Actions
+    
     {
       id: 'action-new-task',
       title: 'New Task',
@@ -95,7 +95,7 @@ export default function CommandPalette() {
       icon: <FileTextOutlined />,
       action: () => {
         navigate(ROUTES.TASKS);
-        // TODO: Trigger new task modal
+        
       },
       keywords: ['new task', 'tạo công việc', 'add task'],
       category: 'actions',
@@ -107,7 +107,7 @@ export default function CommandPalette() {
       icon: <FileTextOutlined />,
       action: () => {
         navigate(ROUTES.NOTES);
-        // TODO: Trigger new note modal
+        
       },
       keywords: ['new note', 'tạo ghi chú', 'add note'],
       category: 'actions',

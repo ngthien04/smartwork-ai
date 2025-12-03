@@ -29,7 +29,7 @@ import { useNavigate } from 'react-router-dom';
 
 import Kanban from '@/components/tasks/Kanban';
 import taskServices from '@/services/taskServices';
-import type { Task } from '@/types'; // giống Kanban
+import type { Task } from '@/types'; 
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -72,7 +72,7 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // ===================== FETCH TASKS TỪ BACKEND =====================
+  
   const fetchTasks = async () => {
     try {
       setLoading(true);
@@ -81,7 +81,7 @@ export default function TasksPage() {
 
       const mapped: Task[] = raw.map((t: any) => ({
         ...t,
-        id: (t as any).id || (t as any)._id, // normalize cho Kanban
+        id: (t as any).id || (t as any)._id, 
       }));
 
       setTasks(mapped);
@@ -101,7 +101,7 @@ export default function TasksPage() {
     fetchTasks();
   };
 
-  // ===================== BUILD ASSIGNEE OPTIONS TỪ TASK THẬT =====================
+  
   const assigneeOptions: AssigneeOption[] = useMemo(() => {
     const map = new Map<string, AssigneeOption>();
 
@@ -120,7 +120,7 @@ export default function TasksPage() {
     return Array.from(map.values());
   }, [tasks]);
 
-  // ===================== BUILD LABEL OPTIONS TỪ TASK THẬT =====================
+  
   const labelOptions: LabelOption[] = useMemo(() => {
     const map = new Map<string, LabelOption>();
 
@@ -140,7 +140,7 @@ export default function TasksPage() {
     return Array.from(map.values());
   }, [tasks]);
 
-  // ===================== FILTER CLIENT =====================
+  
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       const search = filters.search.toLowerCase();
@@ -178,7 +178,7 @@ export default function TasksPage() {
     });
   }, [filters, tasks]);
 
-  // ===================== STATS =====================
+  
   const stats = useMemo(() => {
     const total = tasks.length;
     const inProgress = tasks.filter(
@@ -188,9 +188,9 @@ export default function TasksPage() {
     return { total, inProgress, done };
   }, [tasks]);
 
-  // ===================== HANDLERS =====================
+  
   const handleTaskUpdate = (taskId: string, updates: Partial<Task>) => {
-    // Optimistic update UI
+    
     setTasks((prev) =>
       prev.map((task) => (task.id === taskId ? { ...task, ...updates } : task)),
     );

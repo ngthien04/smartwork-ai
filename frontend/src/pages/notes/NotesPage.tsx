@@ -1,4 +1,3 @@
-// src/pages/notes/NotesPage.tsx
 import React, { useState } from 'react';
 import {
   Row,
@@ -29,7 +28,7 @@ import { noteServices } from '@/services/noteServices';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-// ===== Types =====
+
 type Note = {
   id: string;
   title: string;
@@ -39,7 +38,7 @@ type Note = {
   updatedAt: string;
 };
 
-// ReactMarkdown v9 không chấp nhận className trực tiếp, nên mình wrap nó lại
+
 const Markdown: React.FC<React.ComponentProps<typeof ReactMarkdown>> =
   ReactMarkdown as any;
 
@@ -53,7 +52,7 @@ export default function NotesPage() {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
 
-  // ===== Fetch notes =====
+  
   const { data: notesData, isLoading } = useQuery<Note[]>({
     queryKey: ['notes', { q: searchQuery }],
     queryFn: async () => {
@@ -64,7 +63,7 @@ export default function NotesPage() {
 
   const notes: Note[] = notesData || [];
 
-  // ===== Mutations =====
+  
   const createNoteMutation = useMutation({
     mutationFn: noteServices.create,
     onSuccess: () => {
@@ -105,7 +104,7 @@ export default function NotesPage() {
     },
   });
 
-  // ===== Handlers =====
+  
   const handleCreateNote = () => {
     setEditingNote(null);
     form.resetFields();
@@ -131,7 +130,7 @@ export default function NotesPage() {
   };
 
   const handleModalSubmit = (values: any) => {
-    // Chuyển "tag1, tag2" -> ["tag1", "tag2"]
+    
     const tagsArray: string[] =
       typeof values.tags === 'string'
         ? values.tags
@@ -290,13 +289,11 @@ export default function NotesPage() {
                     </Button>
                   </Space>
                 </div>
-
                 <div className="border-t pt-4">
-                  {/* ✅ ReactMarkdown v9: không truyền className trực tiếp */}
                   <div className="prose max-w-none">
-                    <Markdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {selectedNote.content}
-                    </Markdown>
+                    </ReactMarkdown>
                   </div>
                 </div>
               </div>

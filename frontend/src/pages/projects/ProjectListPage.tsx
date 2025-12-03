@@ -1,4 +1,4 @@
-// src/pages/ProjectListPage.tsx
+
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -24,7 +24,7 @@ import {
   FolderOpenOutlined,
   EditOutlined,
   DeleteOutlined,
-  InboxOutlined,          // 👈 icon cho archive
+  InboxOutlined,          
 } from '@ant-design/icons';
 
 import projectServices, { type ProjectListParams } from '@/services/projectService';
@@ -57,7 +57,7 @@ export default function ProjectListPage() {
 
   const currentUserId = (user as any)?._id || (user as any)?.id;
 
-  // =============== Load list team + chọn team đầu tiên ===============
+  
   useEffect(() => {
     const fetchTeams = async () => {
       try {
@@ -76,7 +76,7 @@ export default function ProjectListPage() {
         const firstTeam = items[0] as Team;
         setTeam(firstTeam);
 
-        // lấy role từ members thay vì user.roles
+        
         const foundMember = firstTeam.members?.find((m) => {
           const u: any =
             typeof m.user === 'string' ? { _id: m.user } : m.user || {};
@@ -97,7 +97,7 @@ export default function ProjectListPage() {
     fetchTeams();
   }, [currentUserId]);
 
-  // =============== Chuyển team ===============
+  
   const handleChangeTeam = (teamId: string) => {
     const t = teams.find((x) => String((x as any)._id) === String(teamId));
     if (!t) return;
@@ -112,7 +112,7 @@ export default function ProjectListPage() {
     setTeamRole((foundMember?.role as TeamRole) ?? null);
   };
 
-  // =============== Fetch projects ===============
+  
   const fetchProjects = async (currentTeam: Team | null, s: string, st: typeof status) => {
     if (!currentTeam?._id) {
       setProjects([]);
@@ -140,10 +140,10 @@ export default function ProjectListPage() {
 
   useEffect(() => {
     fetchProjects(team, search, status);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [team?._id, search, status]);
 
-  // =============== Modal create/edit ===============
+  
   const handleOpenCreateModal = () => {
     if (!team) {
       message.error('Chưa xác định team');
@@ -181,7 +181,7 @@ export default function ProjectListPage() {
       }
 
       if (editingProject) {
-        // UPDATE
+        
         const id = (editingProject as any)._id || (editingProject as any).id;
         await projectServices.update(id, {
           name: values.name,
@@ -190,7 +190,7 @@ export default function ProjectListPage() {
         });
         message.success('Cập nhật dự án thành công');
       } else {
-        // CREATE
+        
         const res = await projectServices.create({
           team: (team as any)._id,
           name: values.name,
@@ -210,7 +210,7 @@ export default function ProjectListPage() {
     }
   };
 
-  // =============== Archive / Unarchive project ===============
+  
   const handleToggleArchiveProject = async (project: Project) => {
     if (teamRole !== 'leader' && teamRole !== 'admin') {
       return message.error('Chỉ leader/admin mới được lưu trữ dự án');
@@ -228,7 +228,7 @@ export default function ProjectListPage() {
     }
   };
 
-  // =============== Delete project ===============
+  
   const handleDeleteProject = async (project: Project) => {
     if (teamRole !== 'leader' && teamRole !== 'admin') {
       return message.error('Chỉ leader/admin mới được xoá project');
@@ -244,7 +244,7 @@ export default function ProjectListPage() {
     }
   };
 
-  // =============== Filter search (front) ===============
+  
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
       const name = p.name?.toLowerCase() || '';

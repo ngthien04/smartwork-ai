@@ -1,4 +1,4 @@
-// src/pages/auth/ResetPasswordPage.tsx
+
 import React, { useState } from 'react';
 import { Row, Col, Card, Form, Input, Button, Typography, Steps, message } from 'antd';
 import { MailOutlined, LockOutlined, CheckCircleOutlined } from '@ant-design/icons';
@@ -15,7 +15,7 @@ export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(token ? 2 : 1); // 1: forgot, 2: reset
+  const [step, setStep] = useState(token ? 2 : 1); 
   const [emailSent, setEmailSent] = useState(false);
 
   const handleForgotPassword = async (values: { email: string }) => {
@@ -25,7 +25,7 @@ export default function ResetPasswordPage() {
       setEmailSent(true);
       message.success('Email đặt lại mật khẩu đã được gửi! Vui lòng kiểm tra hộp thư của bạn.');
     } catch (error: any) {
-      // Tạm thời hiển thị thông báo vì API chưa có
+      
       if (error.message?.includes('chưa được triển khai')) {
         message.info('Tính năng này đang được phát triển. Vui lòng liên hệ admin để đặt lại mật khẩu.');
       } else {

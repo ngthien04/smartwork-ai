@@ -9,7 +9,7 @@ export { CommentModel } from './comment.js';
 export { AttachmentModel } from './attachment.js';
 export { ActivityModel } from './activity.js';
 export { NotificationModel } from './notification.js';
-export { AIInsightModel } from './aIInsight.js';
+export { AIInsightModel } from './aiInsight.js';
 export { ReminderModel } from './reminder.js';
 export { IntegrationModel } from './integration.js';
 export { InviteModel } from './invite.js';

@@ -28,7 +28,6 @@ import {
   PaperClipOutlined,
   CommentOutlined,
   RobotOutlined,
-  ThunderboltOutlined,
   UploadOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
@@ -45,6 +44,7 @@ import subtaskServices from '@/services/subtaskServices';
 import commentServices from '@/services/commentServices';
 import activityServices from '@/services/activityServices';
 import labelServices, { type Label } from '@/services/labelServices';
+import { aiServices } from '@/services/aiServices';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -87,7 +87,10 @@ export default function TaskDetailPage() {
   const [editingLabel, setEditingLabel] = useState<Label | null>(null);
   const [savingLabel, setSavingLabel] = useState(false);
 
-  // ========== LOAD TASK + PROJECT ==========
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<any | null>(null);
+
+  
   useEffect(() => {
     const fetchData = async () => {
       if (!taskId) return;
@@ -128,7 +131,7 @@ export default function TaskDetailPage() {
     fetchData();
   }, [taskId]);
 
-  // ========== LOAD SUBTASKS + COMMENTS + ACTIVITIES ==========
+  
   useEffect(() => {
     if (!task || (!task._id && !task.id)) return;
     const id = task.id || task._id;
@@ -181,7 +184,7 @@ export default function TaskDetailPage() {
     loadActivities();
   }, [task]);
 
-  // ========== AUTO-REFRESH ACTIVITIES ==========
+  
   useEffect(() => {
     if (!task?.id) return;
 
@@ -195,7 +198,7 @@ export default function TaskDetailPage() {
     return () => clearInterval(interval);
   }, [task?.id]);
 
-  // ========== LOAD LABELS THEO PROJECT ==========
+  
   useEffect(() => {
     const loadLabels = async () => {
       if (!project) return;
@@ -222,7 +225,7 @@ export default function TaskDetailPage() {
     loadLabels();
   }, [project]);
 
-  // ========== LABEL IDS TRÊN TASK ==========
+  
   const taskLabelIds = useMemo(() => {
     const raw = (task as any)?.labels;
 
@@ -252,7 +255,7 @@ export default function TaskDetailPage() {
     return [];
   }, [task?.labels]);
 
-  // Chỉ object label thuộc task
+  
   const taskLabelObjects: Label[] = useMemo(() => {
     if (!taskLabelIds.length) return [];
     return taskLabelIds
@@ -260,7 +263,7 @@ export default function TaskDetailPage() {
       .filter((x): x is Label => Boolean(x));
   }, [taskLabelIds, labels]);
 
-  // ========== ASSIGNEES ==========
+  
   const assignees = useMemo(() => {
     if (!task?.assignees) return [];
     return (task.assignees as any[]).map((u) => ({
@@ -271,7 +274,7 @@ export default function TaskDetailPage() {
     }));
   }, [task?.assignees]);
 
-  // ========== SUBTASK PROGRESS ==========
+  
   const subtaskProgress = useMemo(() => {
     if (!subtasks.length) return 0;
     const doneCount = subtasks.filter((s) => s.isDone).length;
@@ -286,7 +289,7 @@ export default function TaskDetailPage() {
     setAttachments((t.attachments as TaskAttachment[]) || []);
   };
 
-  // ========== ATTACHMENTS ==========
+  
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!task?.id && !task?._id) return;
     const id = task.id || task._id;
@@ -318,7 +321,7 @@ export default function TaskDetailPage() {
     return { total, subtaskCount: subtaskIds.size };
   }, [attachments]);
 
-  // ========== SUBTASK HANDLERS ==========
+  
   const handleToggleSubtask = async (subtask: Subtask) => {
     try {
       const res = await subtaskServices.toggle(subtask._id || subtask.id);
@@ -432,7 +435,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  // ========== COMMENT HANDLERS ==========
+  
   const handlePostComment = async () => {
     if (!newComment.trim()) return;
     if (!task?.id && !task?._id) return;
@@ -500,7 +503,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  // ========== LABEL HANDLERS ==========
+  
   const handleSetLabelsForTask = async (nextIds: string[]) => {
     if (!task?.id && !task?._id) return;
     const id = task.id || task._id;
@@ -543,7 +546,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  // ========== ACTIVITIES VIEW MODEL ==========
+  
   const activityItems = useMemo(() => {
     if (!activities.length) return [];
     return activities.map((a) => {
@@ -557,7 +560,35 @@ export default function TaskDetailPage() {
     });
   }, [activities]);
 
-  // ========== EARLY RETURNS ==========
+  const handleAnalyzeWithAI = async () => {
+    if (!task?.id && !task?._id) return;
+    const id = task.id || task._id;
+    try {
+      setAiLoading(true);
+      const res = await aiServices.analyzeTaskPriority(id);
+      setAiResult(res.data); 
+    } catch (e: any) {
+      console.error(e);
+      message.error(e?.response?.data || 'AI phân tích thất bại');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+const handleAcceptInsight = async () => {
+  if (!aiResult?.insight?.id && !aiResult?.insight?._id) return;
+  const insightId = aiResult.insight.id || aiResult.insight._id;
+  try {
+    await aiServices.acceptInsight(insightId, true);
+    message.success('Đã áp dụng đề xuất AI');
+    
+  } catch (e: any) {
+    console.error(e);
+    message.error(e?.response?.data || 'Không áp dụng được đề xuất');
+  }
+};
+
+  
   if (!loading && !task) {
     return (
       <Result
@@ -581,7 +612,7 @@ export default function TaskDetailPage() {
     );
   }
 
-  // ========== RENDER ==========
+  
   return (
     <div className="space-y-4">
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
@@ -662,7 +693,7 @@ export default function TaskDetailPage() {
                         color={lb.color || 'default'}
                         closable
                         onClose={(e) => {
-                          e.preventDefault(); // tránh Tag tự remove DOM
+                          e.preventDefault(); 
                           handleRemoveLabelFromTask(String(lb._id));
                         }}
                         style={{ borderRadius: 4 }}
@@ -841,7 +872,7 @@ export default function TaskDetailPage() {
                   }
 
                   if (editingLabel) {
-                    // UPDATE LABEL
+                    
                     const res = await labelServices.update(editingLabel._id, {
                       name: values.name,
                       color: values.color,
@@ -856,7 +887,7 @@ export default function TaskDetailPage() {
                     );
                     message.success('Đã cập nhật nhãn');
                   } else {
-                    // CREATE LABEL
+                    
                     const res = await labelServices.create({
                       team: teamId,
                       project: project?._id || project?.id,
@@ -956,7 +987,7 @@ export default function TaskDetailPage() {
                                   prev.filter((x) => x._id !== lb._id),
                                 );
 
-                                // Nếu task đang gắn nhãn này thì bỏ ra
+                                
                                 setTask((prev: any) => {
                                   if (!prev?.labels) return prev;
                                   const next = (prev.labels as any[]).filter(
@@ -1361,29 +1392,51 @@ export default function TaskDetailPage() {
         {/* RIGHT COLUMN */}
         <Col xs={24} lg={8}>
           <Space direction="vertical" size="large" className="w-full">
-            {/* AI INSIGHTS (mock) */}
             <Card
               title="AI Insights"
               extra={<RobotOutlined />}
               actions={[
                 <Button
-                  key="accept"
+                  key="analyze"
                   type="primary"
                   ghost
-                  icon={<ThunderboltOutlined />}
+                  icon={<RobotOutlined />}
+                  onClick={handleAnalyzeWithAI}
+                  loading={aiLoading}
                 >
-                  Chấp nhận gợi ý
+                  Phân tích với AI
                 </Button>,
-                <Button key="dismiss" type="text">
-                  Bỏ qua
-                </Button>,
-              ]}
+                aiResult?.insight && (
+                  <Button
+                    key="accept"
+                    type="default"
+                    onClick={handleAcceptInsight}
+                  >
+                    Chấp nhận đề xuất
+                  </Button>
+                ),
+              ].filter(Boolean)}
             >
-              <Alert
-                type="info"
-                showIcon
-                message="Khu vực này có thể hiển thị phân tích AI của task (risk, gợi ý...). Hiện chưa nối API riêng."
-              />
+              {aiResult ? (
+                <>
+                  <Text strong>Đề xuất priority: {aiResult.analysis?.priority}</Text>
+                  <br />
+                  <Text type="secondary">
+                    Risk score: {aiResult.analysis?.riskScore}
+                  </Text>
+                  <ul className="mt-2 list-disc pl-5">
+                    {(aiResult.analysis?.reasons || []).map((r: string, idx: number) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Bấm 'Phân tích với AI' để xem đề xuất ưu tiên & rủi ro cho task này."
+                />
+              )}
             </Card>
 
             {/* CHECKLIST = subtasks view khác */}

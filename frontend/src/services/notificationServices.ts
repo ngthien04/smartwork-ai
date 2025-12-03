@@ -46,7 +46,7 @@ const notificationServices = {
   },
 
   markAllRead(before?: string) {
-    // before: ISO date (optional)
+    
     return api.post<{ matched: number; modified: number }>(
       '/notifications/mark-all-read',
       before ? { before } : {},

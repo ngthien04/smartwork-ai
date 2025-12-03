@@ -44,45 +44,45 @@ export interface ResetPasswordRequest {
 }
 
 export const authService = {
-  // Đăng nhập
+  
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
     const { data } = await fetcher.post<AuthResponse>('/users/login', credentials);
     return data;
   },
 
-  // Đăng ký
+  
   register: async (userData: RegisterRequest): Promise<AuthResponse> => {
     const { data } = await fetcher.post<AuthResponse>('/users/register', userData);
     return data;
   },
 
-  // Lấy thông tin user hiện tại
+  
   getMe: async (): Promise<User> => {
     const { data } = await fetcher.get<User>('/users/me');
     return data;
   },
 
-  // Cập nhật profile
+  
   updateProfile: async (profileData: UpdateProfileRequest): Promise<AuthResponse> => {
     const { data } = await fetcher.put<AuthResponse>('/users/updateProfile', profileData);
     return data;
   },
 
-  // Đổi mật khẩu
+  
   changePassword: async (passwordData: ChangePasswordRequest): Promise<AuthResponse> => {
     const { data } = await fetcher.put<AuthResponse>('/users/changePassword', passwordData);
     return data;
   },
 
-  // Quên mật khẩu (tạm thời chỉ UI, chưa có API)
+  
   forgotPassword: async (emailData: ForgotPasswordRequest): Promise<void> => {
-    // TODO: Implement when backend API is ready
+    
     throw new Error('API chưa được triển khai');
   },
 
-  // Reset mật khẩu (tạm thời chỉ UI, chưa có API)
+  
   resetPassword: async (resetData: ResetPasswordRequest): Promise<void> => {
-    // TODO: Implement when backend API is ready
+    
     throw new Error('API chưa được triển khai');
   },
 };

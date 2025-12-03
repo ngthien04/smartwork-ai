@@ -19,14 +19,14 @@ const handler =
 function normalizeTags(raw) {
   if (!raw) return [];
 
-  // đã là array
+  
   if (Array.isArray(raw)) {
     return raw
       .map((t) => String(t).trim())
       .filter(Boolean);
   }
 
-  // là string -> tách theo dấu phẩy
+  
   if (typeof raw === 'string') {
     return raw
       .split(',')
@@ -34,13 +34,13 @@ function normalizeTags(raw) {
       .filter(Boolean);
   }
 
-  // fallback
+  
   return [String(raw).trim()].filter(Boolean);
 }
 
-// ===================================================================
-// GET /api/notes?q=...  (list notes của user, có search)
-// ===================================================================
+
+
+
 router.get(
   '/',
   authMid,
@@ -54,7 +54,7 @@ router.get(
 
     if (q && String(q).trim()) {
       const text = String(q).trim();
-      // dùng text search nếu có index, fallback regex
+      
       filter.$or = [
         { title: new RegExp(text, 'i') },
         { content: new RegExp(text, 'i') },
@@ -66,7 +66,7 @@ router.get(
       .sort('-updatedAt')
       .lean();
 
-    // ⚠️ NotesPage đang dùng note.id => thêm field id
+    
     const items = docs.map((n) => ({
       ...n,
       id: n._id,
@@ -76,10 +76,10 @@ router.get(
   }),
 );
 
-// ===================================================================
-// POST /api/notes  (create note)
-// body: { title, content, tags? }
-// ===================================================================
+
+
+
+
 router.post(
   '/',
   authMid,
@@ -106,10 +106,10 @@ router.post(
   }),
 );
 
-// ===================================================================
-// PUT /api/notes/:noteId  (update note)
-// body: { title?, content?, tags? }
-// ===================================================================
+
+
+
+
 router.put(
   '/:noteId',
   authMid,
@@ -151,9 +151,9 @@ router.put(
   }),
 );
 
-// ===================================================================
-// DELETE /api/notes/:noteId (soft delete)
-// ===================================================================
+
+
+
 router.delete(
   '/:noteId',
   authMid,
@@ -181,9 +181,9 @@ router.delete(
   }),
 );
 
-// ===================================================================
-// POST /api/notes/:noteId/ai/summary  (AI tóm tắt - mock)
-// ===================================================================
+
+
+
 router.post(
   '/:noteId/ai/summary',
   authMid,
@@ -211,7 +211,7 @@ router.post(
       summary = content.slice(0, 280) + '...';
     }
 
-    // sau này muốn nối OpenAI thì thay logic ở đây
+    
     res.send({
       noteId,
       summary,

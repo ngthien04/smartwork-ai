@@ -1,4 +1,4 @@
-// src/routers/label.router.js
+
 import { Router } from 'express';
 import mongoose from 'mongoose';
 
@@ -21,8 +21,8 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   } catch {}
 }
 
-// GET /api/labels
-// Query: team (bắt buộc), project?, q, page, limit, sort
+
+
 router.get(
   '/',
   authMid,
@@ -51,7 +51,7 @@ router.get(
   }),
 );
 
-// GET /api/labels/:labelId
+
 router.get(
   '/:labelId',
   authMid,
@@ -63,8 +63,8 @@ router.get(
   })
 );
 
-// POST /api/labels  (admin)
-// body: { team, project?, name, color?, description? }
+
+
 router.post(
   '/',
   authMid,
@@ -105,8 +105,8 @@ router.post(
   }),
 );
 
-// PUT /api/labels/:labelId  (admin)
-// body: { name?, color?, description? }
+
+
 router.put(
   '/:labelId',
   authMid,
@@ -146,9 +146,9 @@ router.put(
 );
 
 
-// DELETE /api/labels/:labelId  (admin)
-// - Xoá nhãn: KHÔNG xoá khỏi task ở đây để an toàn (tuỳ policy).
-//   Bạn có thể viết thêm job gỡ label khỏi Task nếu cần.
+
+
+
 router.delete(
   '/:labelId',
   authMid,

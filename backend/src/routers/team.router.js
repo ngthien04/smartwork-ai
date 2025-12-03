@@ -14,7 +14,7 @@ import { TaskModel } from '../models/task.js';
 
 
 import { sendWelcomeEmail } from '../helpers/mail.helper.js';
-// import { sendTeamInviteEmail } from '../helpers/your-invite-mail.js' 
+
 
 const router = Router();
 const handler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -33,7 +33,7 @@ function ensureMemberRole(teamDoc, userId) {
 }
 
 function isTeamMember(teamDoc, user) {
-  if (user?.isAdmin) return true; // global admin cho qua luôn nếu bạn thích
+  if (user?.isAdmin) return true; 
   return teamDoc.members?.some((m) => String(m.user) === String(user.id));
 }
 
@@ -44,12 +44,12 @@ function isLeaderOrAdmin(teamDoc, user) {
 }
 
 function canInvite(teamDoc, user) {
-  // member, leader, admin trong team đều mời được
+  
   return isTeamMember(teamDoc, user);
 }
 
-// GET /api/teams  -> danh sách team của current user
-// Query: q? (search name), page, limit, sort
+
+
 router.get(
   '/',
   authMid,
@@ -72,7 +72,7 @@ router.get(
   })
 );
 
-// GET /api/teams/:teamId -> chi tiết team (phải là member)
+
 router.get(
   '/:teamId',
   authMid,
@@ -94,8 +94,8 @@ router.get(
   })
 );
 
-// POST /api/teams -> tạo team mới (current user = leader)
-// body: { name, slug, description? }
+
+
 router.post(
   '/',
   authMid,
@@ -103,7 +103,7 @@ router.post(
     const { name, slug, description } = req.body || {};
     if (!name || !slug) return res.status(BAD_REQUEST).send('Thiếu name/slug');
 
-    // tạo team
+    
     const team = await TeamModel.create({
       name: name.trim(),
       slug: String(slug).toLowerCase().trim(),
@@ -113,7 +113,7 @@ router.post(
       settings: {},
     });
 
-    // thêm role vào user
+    
     await UserModel.findByIdAndUpdate(req.user.id, {
       $addToSet: { roles: { team: team._id, role: 'leader' } },
     });
@@ -131,8 +131,8 @@ router.post(
   })
 );
 
-// PUT /api/teams/:teamId  -> update info (leader/admin)
-// body: { name?, description?, settings?{...} }
+
+
 router.put(
   '/:teamId',
   authMid,
@@ -167,8 +167,8 @@ router.put(
   })
 );
 
-// PUT /api/teams/:teamId/archive  (leader/admin)
-// body: { isArchived: boolean }
+
+
 router.put(
   '/:teamId/archive',
   authMid,
@@ -198,7 +198,7 @@ router.put(
   })
 );
 
-// DELETE /api/teams/:teamId  -> soft delete (leader) + soft delete project & task của team
+
 router.delete(
   '/:teamId',
   authMid,
@@ -214,24 +214,24 @@ router.delete(
 
     const now = new Date();
 
-    // 1) Soft delete team
+    
     team.isDeleted = true;
     team.deletedAt = now;
     await team.save();
 
-    // 2) Soft delete tất cả project thuộc team này
+    
     await ProjectModel.updateMany(
       { team: team._id, isDeleted: { $ne: true } },
       {
         $set: {
           isDeleted: true,
           deletedAt: now,
-          isArchived: true, // cho tiện, coi như project đã archive luôn
+          isArchived: true, 
         },
       },
     );
 
-    // 3) Soft delete tất cả task thuộc team này
+    
     await TaskModel.updateMany(
       { team: team._id, isDeleted: { $ne: true } },
       {
@@ -255,7 +255,7 @@ router.delete(
   })
 );
 
-// GET /api/teams/:teamId/members  -> danh sách members (member trở lên)
+
 router.get(
   '/:teamId/members',
   authMid,
@@ -274,8 +274,8 @@ router.get(
   })
 );
 
-// POST /api/teams/:teamId/members  (leader/admin)
-// body: { userId, role = 'member' }
+
+
 router.post(
   '/:teamId/members',
   authMid,
@@ -293,20 +293,20 @@ router.post(
     const user = await UserModel.findById(userId);
     if (!user) return res.status(404).send('User không tồn tại');
 
-    // push vào team.members nếu chưa có
+    
     const exists = team.members?.some((m) => String(m.user) === String(userId));
     if (!exists) {
       team.members.push({ user: user._id, role, joinedAt: new Date() });
       await team.save();
     } else {
-      // nếu đã tồn tại, cập nhật role
+      
       await TeamModel.updateOne(
         { _id: team._id, 'members.user': user._id },
         { $set: { 'members.$.role': role } }
       );
     }
 
-    // sync user.roles
+    
     const hasRole = user.roles?.some((r) => String(r.team) === String(team._id));
     if (!hasRole) {
       user.roles = [...(user.roles || []), { team: team._id, role }];
@@ -332,8 +332,8 @@ router.post(
   })
 );
 
-// DELETE /api/teams/:teamId/members/:userId  (leader/admin)
-// - xoá thành viên khỏi team + sync user.roles
+
+
 router.delete(
   '/:teamId/members/:userId',
   authMid,
@@ -344,13 +344,13 @@ router.delete(
 
     const isSelfRemove = String(req.user.id) === String(userId);
 
-    // ================================
-    // CASE 1: USER tự rời team
-    // ================================
+    
+    
+    
     if (isSelfRemove) {
       const myRole = ensureMemberRole(team, userId);
 
-      // Không cho rời nếu là leader cuối cùng
+      
       if (myRole === 'leader') {
         const leaderCount = team.members.filter((m) => m.role === 'leader').length;
         if (leaderCount <= 1) {
@@ -370,9 +370,9 @@ router.delete(
       return res.send({ ok: true });
     }
 
-    // ================================
-    // CASE 2: LEADER/ADMIN kick người khác
-    // ================================
+    
+    
+    
     if (!isLeaderOrAdmin(team, req.user)) {
       return res.status(401).send('Chỉ leader/admin mới xoá thành viên');
     }
@@ -411,7 +411,7 @@ router.post(
     const team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    // ✅ member là mời được, không cần leader/admin
+    
     if (!canInvite(team, req.user)) {
       return res
         .status(UNAUTHORIZED)
@@ -504,7 +504,7 @@ router.post(
   })
 );
 
-// GET /api/teams/slug/:slug
+
 router.get('/slug/:slug', authMid, async (req, res) => {
   const { slug } = req.params;
   const teamDoc = await TeamModel.findOne({ slug, isDeleted: { $ne: true } }).lean();

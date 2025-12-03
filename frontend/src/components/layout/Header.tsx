@@ -8,7 +8,6 @@ import {
   BellOutlined
 } from '@ant-design/icons';
 import { Badge, Dropdown, List, Spin, Empty, Typography, Popconfirm } from 'antd';
-import { EllipsisOutlined } from '@ant-design/icons';
 
 import { Button } from '@/components/ui/button';
 import type { RootState } from '@/types';
@@ -23,7 +22,7 @@ export default function Header() {
   const sidebarCollapsed = useSelector((state: RootState) => state.ui.sidebarCollapsed);
   const { user } = useSelector((state: RootState) => state.auth);
 
-  // ====== NOTIFICATION STATE ======
+  
   const [notiOpen, setNotiOpen] = useState(false);
   const [notiLoading, setNotiLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -33,7 +32,7 @@ export default function Header() {
     dispatch(setCommandPaletteOpen(true));
   };
 
-  // --- API helpers ---
+  
   const fetchUnreadCount = async () => {
     try {
       const res = await notificationServices.unreadCount();
@@ -57,7 +56,7 @@ export default function Header() {
 
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000); // 30s cập nhật một lần
+    const interval = setInterval(fetchUnreadCount, 30000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -111,7 +110,7 @@ export default function Header() {
     }
   };
 
-  // Hiển thị text theo loại noti
+  
   const renderNotificationText = (n: Notification) => {
     const payload = n.payload || {};
 

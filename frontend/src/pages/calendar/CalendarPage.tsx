@@ -1,4 +1,4 @@
-// src/pages/calendar/CalendarPage.tsx
+
 import { useMemo, useState } from 'react';
 import { Row, Col, Card, Button, Calendar, Modal, Form, Input, DatePicker, Space, Typography, List, message } from 'antd';
 import { PlusOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
@@ -18,7 +18,7 @@ export default function CalendarPage() {
 
   const queryClient = useQueryClient();
 
-  // Fetch events for current month
+  
   const { data: eventsData } = useQuery({
     queryKey: ['events', selectedDate.format('YYYY-MM')],
     queryFn: () => {
@@ -30,7 +30,7 @@ export default function CalendarPage() {
 
   const events = eventsData?.data || [];
 
-  // Create event mutation
+  
   const createEventMutation = useMutation({
     mutationFn: calendarServices.createEvent,
     onSuccess: () => {
@@ -39,7 +39,7 @@ export default function CalendarPage() {
     },
   });
 
-  // Update event mutation
+  
   const updateEventMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => 
       calendarServices.updateEvent(id, data),
@@ -48,7 +48,7 @@ export default function CalendarPage() {
     },
   });
 
-  // Delete event mutation
+  
   const deleteEventMutation = useMutation({
     mutationFn: calendarServices.removeEvent,
     onSuccess: () => {
@@ -56,7 +56,7 @@ export default function CalendarPage() {
     },
   });
 
-  // AI Suggest mutation
+  
   const aiSuggestMutation = useMutation({
     mutationFn: calendarServices.aiSuggest,
     onSuccess: (data) => {

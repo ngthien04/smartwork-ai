@@ -1,4 +1,4 @@
-// src/pages/settings/SettingsPage.tsx
+
 import { useState } from 'react';
 import { Row, Col, Card, Switch, Select, Button, Typography, Space, Divider, Modal, Form, Input, message } from 'antd';
 import { LogoutOutlined, UserOutlined, GlobalOutlined, BulbOutlined, LockOutlined, EditOutlined } from '@ant-design/icons';
@@ -39,7 +39,7 @@ export default function SettingsPage() {
     navigate(ROUTES.AUTH);
   };
 
-  // Update profile mutation
+  
   const updateProfileMutation = useMutation({
     mutationFn: authService.updateProfile,
     onSuccess: (response) => {
@@ -61,7 +61,7 @@ export default function SettingsPage() {
     },
   });
 
-  // Change password mutation
+  
   const changePasswordMutation = useMutation({
     mutationFn: authService.changePassword,
     onSuccess: (response) => {

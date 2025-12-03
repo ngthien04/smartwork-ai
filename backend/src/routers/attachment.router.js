@@ -18,15 +18,15 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   } catch {}
 }
 
-// Multer: lưu vào memory để up stream lên Cloudinary
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB
+    fileSize: 20 * 1024 * 1024, 
   },
 });
 
-// Quyền xem theo team của task (member trở lên)
+
 async function canViewTask(user, taskDoc) {
   if (!taskDoc) return false;
   if (user?.isAdmin) return true;
@@ -37,7 +37,7 @@ async function canViewTask(user, taskDoc) {
   return !!hasRole;
 }
 
-// Quyền thao tác: admin, reporter, hoặc assignee của task
+
 async function canManageTask(user, taskDoc) {
   if (!taskDoc) return false;
   if (user?.isAdmin) return true;
@@ -71,12 +71,12 @@ router.get(
       const can = await canViewTask(req.user, taskDoc);
       if (!can) return res.status(UNAUTHORIZED).send('Không có quyền xem file của task này');
     } else if (!req.user?.isAdmin) {
-      // nếu không truyền task: giới hạn theo các team user thuộc
+      
       const me = await UserModel.findById(req.user.id, { roles: 1 }).lean();
       const teamIds = (me?.roles || []).map((r) => r.team).filter(Boolean);
       if (!teamIds.length) return res.send({ page: p, limit: l, total: 0, items: [] });
 
-      // find tasks theo teamIds rồi lấy attachment theo các task đó
+      
       const taskIds = await TaskModel.find({ team: { $in: teamIds } }, { _id: 1 }).lean();
       q.task = { $in: taskIds.map((t) => t._id) };
     }
@@ -112,7 +112,7 @@ router.get(
       .lean();
     if (!doc) return res.status(404).send('Attachment không tồn tại');
 
-    // kiểm tra quyền xem theo task
+    
     if (doc.task) {
       const taskDoc = await TaskModel.findById(doc.task._id || doc.task).lean();
       const can = await canViewTask(req.user, taskDoc);
@@ -148,7 +148,7 @@ router.post(
       return res.status(BAD_REQUEST).send('Thiếu task');
     }
 
-    // Upload lên Cloudinary
+    
     const cloud = configCloudinary();
 
     const uploadToCloudinary = (buffer, filename, mimetype) =>
@@ -157,7 +157,7 @@ router.post(
           {
             folder: 'smartwork-ai/attachments',
             resource_type: 'auto',
-            public_id: undefined, // để Cloudinary tự tạo
+            public_id: undefined, 
             use_filename: true,
             unique_filename: true,
             overwrite: false,
@@ -179,13 +179,13 @@ router.post(
       mimeType: file.mimetype,
       size: file.size,
       storage: {
-        provider: 'cloudinary', // nhớ thêm vào enum như lưu ý ở trên
-        key: result.public_id,  // dùng public_id để xoá sau này
-        url: result.secure_url, // URL xem file
+        provider: 'cloudinary', 
+        key: result.public_id,  
+        url: result.secure_url, 
       },
     });
 
-    // Activity
+    
     if (taskDoc) {
       await recordActivity({
         team: taskDoc.team,
@@ -225,19 +225,19 @@ router.delete(
       const can = await canManageTask(req.user, taskDoc);
       if (!can) return res.status(UNAUTHORIZED).send('Không có quyền xoá file này');
     } else if (!req.user?.isAdmin && String(doc.uploadedBy) !== String(req.user.id)) {
-      // file không gắn task: chỉ admin hoặc chính chủ được xoá
+      
       return res.status(UNAUTHORIZED).send('Không có quyền xoá file này');
     }
 
-    // Xoá trên Cloudinary (nếu là cloudinary)
+    
     try {
       if (doc.storage?.provider === 'cloudinary' && doc.storage.key) {
         const cloud = configCloudinary();
-        await cloud.uploader.destroy(doc.storage.key, { resource_type: 'image' }); // hoặc 'raw' tùy loại
-        // Với video/pdf có thể cần resource_type: 'video' hoặc 'raw'
+        await cloud.uploader.destroy(doc.storage.key, { resource_type: 'image' }); 
+        
       }
     } catch (e) {
-      // không chặn xoá DB nếu Cloudinary lỗi; tuỳ bạn muốn strict thì throw
+      
       console.warn('[attachment] cloudinary destroy error:', e?.message || e);
     }
 

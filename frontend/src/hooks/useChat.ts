@@ -1,101 +1,102 @@
-import { useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+
+import { useState, useRef, useEffect } from 'react';
+import type { KeyboardEvent } from 'react'; 
 import { aiServices } from '@/services/aiServices';
-import type { ChatMessage, RootState } from '@/types';
-import { addMessage, setIsStreaming, setCurrentThreadId } from '@/store/slices/chatSlice';
+
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+};
 
 export function useChat() {
-  const dispatch = useDispatch();
-  const { messages, isStreaming, currentThreadId } = useSelector((state: RootState) => state.chat);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || isStreaming) return;
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
-    const userMessage: ChatMessage = {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isStreaming]);
+
+  const clearChat = () => {
+    setMessages([]);
+    setInputValue('');
+  };
+
+  const handleSend = async () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed || isStreaming) return;
+
+    const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: content.trim(),
+      content: trimmed,
       createdAt: new Date().toISOString(),
     };
 
-    dispatch(addMessage(userMessage));
-    dispatch(setIsStreaming(true));
+    const nextMessages = [...messages, userMsg];
+
+    setMessages(nextMessages);
+    setInputValue('');
+    setIsStreaming(true);
 
     try {
-      // Try streaming first
-      const streamGenerator = aiServices.chatStream({
-        threadId: currentThreadId || undefined,
-        messages: [...messages, userMessage],
-      });
-
-      let assistantContent = '';
-      let threadId = currentThreadId;
-
-      for await (const chunk of streamGenerator) {
-        if (chunk.type === 'content') {
-          assistantContent += chunk.content;
-          
-          // Update the last message or create new one
-          const assistantMessage: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: assistantContent,
-            createdAt: new Date().toISOString(),
-          };
-
-          // Replace the last message if it's assistant, otherwise add new
-          dispatch(addMessage(assistantMessage));
-        } else if (chunk.type === 'thread_id') {
-          threadId = chunk.threadId;
-          dispatch(setCurrentThreadId(chunk.threadId));
-        }
-      }
-    } catch (error) {
-      console.error('Streaming failed, falling back to regular request:', error);
       
-      try {
-        // Fallback to regular request
-        const response = await aiServices.chat({
-          threadId: currentThreadId || undefined,
-          messages: [...messages, userMessage],
-        });
+      const payload = {
+        messages: nextMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      };
 
-        const assistantMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: response.reply,
-          createdAt: new Date().toISOString(),
-        };
+      
+      const replyText = await aiServices.chat(payload);
 
-        dispatch(addMessage(assistantMessage));
-        dispatch(setCurrentThreadId(response.threadId));
-      } catch (fallbackError) {
-        console.error('Chat request failed:', fallbackError);
-        
-        const errorMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: 'Xin lỗi, tôi không thể xử lý yêu cầu của bạn lúc này. Vui lòng thử lại sau.',
-          createdAt: new Date().toISOString(),
-        };
+      const botMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: replyText || '(AI không trả lời gì cả)',
+        createdAt: new Date().toISOString(),
+      };
 
-        dispatch(addMessage(errorMessage));
-      }
+      setMessages((prev) => [...prev, botMsg]);
+    } catch (err) {
+      console.error('Chat request failed', err);
+      const errMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: 'Xin lỗi, có lỗi khi gọi AI. Vui lòng thử lại sau.',
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errMsg]);
     } finally {
-      dispatch(setIsStreaming(false));
+      setIsStreaming(false);
     }
-  }, [messages, isStreaming, currentThreadId, dispatch]);
+  };
 
-  const clearChat = useCallback(() => {
-    dispatch(setCurrentThreadId(null));
-    // Clear messages will be handled by Redux action
-  }, [dispatch]);
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
 
   return {
     messages,
+    inputValue,
+    setInputValue,
+    handleSend,
+    handleKeyPress,
     isStreaming,
-    currentThreadId,
-    sendMessage,
     clearChat,
+    messagesEndRef,
   };
 }

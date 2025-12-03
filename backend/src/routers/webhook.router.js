@@ -44,7 +44,7 @@ function assertValidUrl(url) {
   }
 }
 
-// --- HMAC signature (để /test) ---
+
 function signBody(secret, body, timestamp) {
   if (!secret) return null;
   const h = crypto.createHmac('sha256', secret);
@@ -67,7 +67,7 @@ const ALLOWED_EVENTS = [
 ];
 
 function validateEvents(events) {
-  if (!Array.isArray(events)) return true; // cho phép rỗng = tất cả
+  if (!Array.isArray(events)) return true; 
   const invalid = events.filter((e) => typeof e !== 'string' || !ALLOWED_EVENTS.includes(e));
   if (invalid.length) {
     const err = new Error(`Invalid events: ${invalid.join(', ')}`);
@@ -142,7 +142,7 @@ router.post(
       team: toId(team),
       url,
       secret,
-      events: Array.isArray(events) ? events : [], // [] = subscribe all (logic app phía phát có thể lọc)
+      events: Array.isArray(events) ? events : [], 
       isActive: typeof isActive === 'boolean' ? isActive : true,
     });
 

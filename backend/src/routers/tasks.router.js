@@ -21,7 +21,7 @@ const isValidId = (id) => mongoose.isValidObjectId(id);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB
+    fileSize: 20 * 1024 * 1024, 
   },
   fileFilter: (req, file, cb) => {
     const ok =
@@ -32,7 +32,7 @@ const upload = multer({
   },
 });
 
-// ===== Helper upload buffer lên Cloudinary qua stream =====
+
 function uploadToCloudinary(
   buffer,
   { folder, filename, resource_type = 'auto' } = {}
@@ -53,9 +53,9 @@ function uploadToCloudinary(
   });
 }
 
-// ===== Notification helpers =====
 
-// Tạo thông báo cho nhiều user
+
+
 async function createNotificationsForUsers(userIds, { type, payload }) {
   if (!Array.isArray(userIds) || !userIds.length) return;
 
@@ -73,7 +73,7 @@ async function createNotificationsForUsers(userIds, { type, payload }) {
   }
 }
 
-// Lấy list user liên quan tới task (assignees + reporter)
+
 function getTaskParticipantUserIds(task) {
   const ids = new Set();
 
@@ -93,7 +93,7 @@ function getTaskParticipantUserIds(task) {
   return Array.from(ids);
 }
 
-// Gửi thông báo cho tất cả người liên quan tới task
+
 async function notifyTaskParticipants(task, type, extraPayload = {}) {
   const participantIds = getTaskParticipantUserIds(task);
   if (!participantIds.length) return;
@@ -112,7 +112,7 @@ async function notifyTaskParticipants(task, type, extraPayload = {}) {
   }
 }
 
-// ===== Common helpers =====
+
 
 const router = Router();
 const handler =
@@ -137,9 +137,9 @@ async function recordActivity({
   } catch {}
 }
 
-// ===================================================================
-// GET /api/tasks  (list + filter theo team, project, sprint, ...)
-// ===================================================================
+
+
+
 router.get(
   '/',
   authMid,
@@ -161,7 +161,7 @@ router.get(
 
     const filter = {};
 
-    // Lấy list team mà user thuộc về
+    
     const user = await UserModel.findById(req.user.id, {
       roles: 1,
       isAdmin: 1,
@@ -173,7 +173,7 @@ router.get(
 
     let team = teamQuery;
 
-    // Nếu có ?team=... thì dùng param, nhưng phải check quyền
+    
     if (team) {
       const requestedTeamId = toObjectId(team);
 
@@ -188,9 +188,9 @@ router.get(
 
       filter.team = requestedTeamId;
     } else {
-      // Không truyền ?team=...
+      
       if (!user?.isAdmin) {
-        // Non-admin: chỉ xem task trong các team của mình
+        
         if (!teamIds.length) {
           return res.send({
             page: Number(page) || 1,
@@ -202,7 +202,7 @@ router.get(
 
         filter.team = { $in: teamIds };
       }
-      // Admin mà không truyền team -> xem tất cả team
+      
     }
 
     if (project) filter.project = toObjectId(project);
@@ -242,9 +242,9 @@ router.get(
   }),
 );
 
-// ===================================================================
-// GET /api/tasks/:taskId
-// ===================================================================
+
+
+
 router.get(
   '/:taskId',
   authMid,
@@ -274,7 +274,7 @@ router.get(
       return res.status(404).send('Task không tồn tại');
     }
 
-    // Check quyền: non-admin chỉ xem task thuộc team mình
+    
     if (!req.user?.isAdmin) {
       const user = await UserModel.findById(req.user.id, { roles: 1 }).lean();
       const teamIds = (user?.roles || [])
@@ -292,10 +292,10 @@ router.get(
   }),
 );
 
-// ===================================================================
-// POST /api/tasks  (create)
-// body: { team, project?, sprint?, title, ... }
-// ===================================================================
+
+
+
+
 router.post(
   '/',
   authMid,
@@ -319,38 +319,38 @@ router.post(
     if (!team || !title)
       return res.status(BAD_REQUEST).send('Thiếu team/title');
 
-    // ----- NORMALIZE labels -----
+    
     let rawLabels = req.body?.labels ?? [];
 
-    // Nếu FE gửi string (kiểu "[ 'T ', 'D ', ... ]")
+    
     if (typeof rawLabels === 'string') {
-      // thử parse JSON trước
+      
       try {
         const parsed = JSON.parse(rawLabels);
         rawLabels = parsed;
       } catch {
-        // fallback: tách theo dấu phẩy / khoảng trắng
+        
         rawLabels = rawLabels
-          .replace(/[\[\]'"]/g, '') // bỏ [, ], ', "
+          .replace(/[\[\]'"]/g, '') 
           .split(/[, ]+/)
           .filter(Boolean);
       }
     }
 
-    // Nếu không phải array thì wrap lại
+    
     if (!Array.isArray(rawLabels)) {
       rawLabels = [rawLabels];
     }
 
-    // Lọc & convert sang ObjectId hợp lệ
+    
     const labels = rawLabels
       .map((v) => String(v).trim())
-      .filter((id) => mongoose.isValidObjectId(id))        // CHỈ giữ id hợp lệ
+      .filter((id) => mongoose.isValidObjectId(id))        
       .map((id) => new mongoose.Types.ObjectId(id));
     
     console.log('Labels to save:', labels);
 
-    // ----- Tạo task -----
+    
     const doc = await TaskModel.create({
       team,
       project,
@@ -378,7 +378,7 @@ router.post(
       metadata: { title: doc.title },
     });
 
-    // Notify cho assignees (nếu có)
+    
     try {
       const assigneeIds = (assignees || [])
         .map((u) => (typeof u === 'object' ? u._id : u))
@@ -405,9 +405,9 @@ router.post(
 );
 
 
-// ===================================================================
-// PUT /api/tasks/:taskId  (update general fields)
-// ===================================================================
+
+
+
 router.put(
   '/:taskId',
   authMid,
@@ -454,17 +454,17 @@ router.put(
 
     const after = await TaskModel.findById(taskId).lean();
 
-    // Notify participants về update
+    
     await notifyTaskParticipants(after, 'task_updated', { updates });
 
     res.send(after);
   }),
 );
 
-// ===================================================================
-// PUT /api/tasks/:taskId/status  (change status quickly)
-// body: { status }
-// ===================================================================
+
+
+
+
 router.put(
   '/:taskId/status',
   authMid,
@@ -495,10 +495,10 @@ router.put(
   }),
 );
 
-// ===================================================================
-// PUT /api/tasks/:taskId/assign  (assign or replace assignees)
-// body: { assignees: [] }
-// ===================================================================
+
+
+
+
 router.put(
   '/:taskId/assign',
   authMid,
@@ -528,10 +528,10 @@ router.put(
   }),
 );
 
-// ===================================================================
-// POST /api/tasks/:taskId/comments  (add a comment)
-// body: { content, mentions?[] }
-// ===================================================================
+
+
+
+
 router.post(
   '/:taskId/comments',
   authMid,
@@ -560,7 +560,7 @@ router.post(
       metadata: { commentId: cmt._id },
     });
 
-    // 1) Thông báo cho participants (assignees + reporter)
+    
     await notifyTaskParticipants(task, 'task_comment', {
       commentId: cmt._id,
       commentPreview: content.slice(0, 120),
@@ -568,11 +568,11 @@ router.post(
       authorName: req.user.name,
     });
 
-    // 2) Thông báo riêng cho những người bị mention (comment_mention)
+    
     if (Array.isArray(mentions) && mentions.length) {
       const mentionedIds = mentions
         .map((m) => String(m))
-        .filter((id) => id && id !== String(req.user.id)); // không notify chính mình
+        .filter((id) => id && id !== String(req.user.id)); 
 
       if (mentionedIds.length) {
         await createNotificationsForUsers(mentionedIds, {
@@ -593,9 +593,9 @@ router.post(
   }),
 );
 
-// ===================================================================
-// POST /api/tasks/:taskId/subtasks  (create subtask)
-// ===================================================================
+
+
+
 router.post(
   '/:taskId/subtasks',
   authMid,
@@ -638,9 +638,9 @@ router.post(
   }),
 );
 
-// ===================================================================
-// PUT /api/tasks/:taskId/subtasks/:subtaskId  (update subtask)
-// ===================================================================
+
+
+
 router.put(
   '/:taskId/subtasks/:subtaskId',
   authMid,
@@ -685,9 +685,9 @@ router.put(
   }),
 );
 
-// ===================================================================
-// DELETE /api/tasks/:taskId/subtasks/:subtaskId
-// ===================================================================
+
+
+
 router.delete(
   '/:taskId/subtasks/:subtaskId',
   authMid,
@@ -719,10 +719,10 @@ router.delete(
   }),
 );
 
-// ===================================================================
-// POST /api/tasks/:taskId/labels   (replace labels)
-// body: { labels: [labelIds] }
-// ===================================================================
+
+
+
+
 router.post(
   '/:taskId/labels',
   authMid,
@@ -762,9 +762,9 @@ router.post(
   }),
 );
 
-// ===================================================================
-// POST /api/tasks/:taskId/attachments
-// ===================================================================
+
+
+
 router.post(
   '/:taskId/attachments',
   authMid,
@@ -806,9 +806,9 @@ router.post(
   }),
 );
 
-// ===================================================================
-// POST /api/tasks/:taskId/attachments/upload
-// ===================================================================
+
+
+
 router.post(
   '/:taskId/attachments/upload',
   authMid,
@@ -879,9 +879,9 @@ router.post(
   }),
 );
 
-// ===================================================================
-// DELETE /api/tasks/:taskId/attachments/:attachmentId
-// ===================================================================
+
+
+
 router.delete(
   '/:taskId/attachments/:attachmentId',
   authMid,
@@ -934,9 +934,9 @@ router.delete(
   }),
 );
 
-// ===================================================================
-// DELETE /api/tasks/:taskId  (soft delete)
-// ===================================================================
+
+
+
 router.delete(
   '/:taskId',
   authMid,
@@ -962,15 +962,15 @@ router.delete(
       metadata: {},
     });
 
-    // tuỳ bạn có muốn notify delete không; ở đây bỏ qua
+    
 
     res.send();
   }),
 );
 
-// ===================================================================
-// GET /api/tasks/stats/overview
-// ===================================================================
+
+
+
 router.get(
   '/stats/overview',
   authMid,

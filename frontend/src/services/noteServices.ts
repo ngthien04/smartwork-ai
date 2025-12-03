@@ -1,37 +1,47 @@
-// src/services/noteServices.ts
 import api from './api';
 
 export type NotePayload = {
   title: string;
   content: string;
-  tags?: string[] | string; // chấp nhận cả array hoặc "a,b,c"
+  tags?: string[] | string;
+};
+
+export type Note = {
+  id: string;
+  title: string;
+  content: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotesListResponse =
+  | Note[]
+  | { items: Note[]; total?: number; page?: number; limit?: number };
+
+export type NotesListParams = {
+  q?: string;
+  page?: number;
+  size?: number;
+  limit?: number;
 };
 
 const baseUrl = '/notes'; 
 
 export const noteServices = {
-  list(params?: { q?: string }) {
-    // => gọi GET /api/notes?q=...
-    return api.get(baseUrl, { params });
+  list(params?: NotesListParams) {
+    return api.get<NotesListResponse>(baseUrl, { params });
   },
-
   create(data: NotePayload) {
-    // => POST /api/notes
     return api.post(baseUrl, data);
   },
-
   update(id: string, data: Partial<NotePayload>) {
-    // => PUT /api/notes/:id
     return api.put(`${baseUrl}/${id}`, data);
   },
-
   remove(id: string) {
-    // => DELETE /api/notes/:id
     return api.delete(`${baseUrl}/${id}`);
   },
-
   aiSummarize(id: string) {
-    // => POST /api/notes/:id/ai/summary
     return api.post(`${baseUrl}/${id}/ai/summary`);
   },
 };

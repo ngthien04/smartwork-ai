@@ -45,7 +45,6 @@ function buildMongoUri() {
 
 function mongooseOptions() {
   return {
-    // dbName chỉ cần nếu URI không chứa dbName
     dbName: (!MONGO_URI ? MONGO_DB_NAME : undefined),
     maxPoolSize: Number(MONGO_MAX_POOL_SIZE),
     minPoolSize: Number(MONGO_MIN_POOL_SIZE),
@@ -53,7 +52,7 @@ function mongooseOptions() {
     socketTimeoutMS: Number(MONGO_SOCKET_TIMEOUT_MS),
     retryWrites: MONGO_RETRY_WRITES === 'true',
     tls: MONGO_TLS === 'true',
-    autoIndex: NODE_ENV !== 'production', // bật autoIndex ở dev
+    autoIndex: NODE_ENV !== 'production', 
   };
 }
 
@@ -65,7 +64,7 @@ let isConnecting = false;
  */
 
 export async function connectMongo(opts = {}) {
-    if (mongoose.connection.readyState === 1) return mongoose.connection; // already connected
+    if (mongoose.connection.readyState === 1) return mongoose.connection; 
     if (isConnecting) return await waitForMongo(15000);
 
     const uri = opts.uri || buildMongoUri();
@@ -103,13 +102,11 @@ export async function disconnectMongo() {
   }
 }
 
-/** Trạng thái kết nối: 'disconnected' | 'connected' | 'connecting' | 'disconnecting' */
 export function mongoState() {
   const map = ['disconnected', 'connected', 'connecting', 'disconnecting'];
   return map[mongoose.connection.readyState] || 'unknown';
 }
 
-/** Health-check đơn giản (cho /healthz). */
 export function mongoHealth() {
   const state = mongoState();
   return {
@@ -160,7 +157,6 @@ export async function syncIndexes(models = [], dropBeforeSync = false) {
   for (const m of models) {
     if (dropBeforeSync) {
       await m.collection.dropIndexes().catch((e) => {
-        // bỏ qua nếu chưa có index
         if (!/ns not found|index not found/.test(String(e))) throw e;
       });
     }
@@ -168,7 +164,6 @@ export async function syncIndexes(models = [], dropBeforeSync = false) {
   }
 }
 
-/** Gắn signal để đóng kết nối gọn gàng khi process dừng. */
 export function installMongoShutdownHooks(logger = console) {
   const graceful = async (signal) => {
     try {
@@ -185,10 +180,9 @@ export function installMongoShutdownHooks(logger = console) {
   process.on('SIGTERM', graceful);
 }
 
-// ---- Helpers ----------------------------------------------------------------
 function bindConnectionEvents() {
   const c = mongoose.connection;
-  if (c.__eventsBound) return; // tránh bind trùng
+  if (c.__eventsBound) return; 
   c.__eventsBound = true;
 
   c.on('connected', () => {

@@ -1,4 +1,4 @@
-// src/routers/events.router.js
+
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
@@ -29,7 +29,7 @@ router.get(
       .select('title dueDate project team')
       .lean();
 
-    // Tạm trả về kiểu "events = tasks"
+    
     const events = tasks.map((t) => ({
       id: t._id,
       title: t.title,

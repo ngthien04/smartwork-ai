@@ -9,7 +9,7 @@ export interface ActivityListResponse {
 }
 
 const activityServices = {
-  // GET /api/activities?targetType=task&targetId=...
+  
   list(params: {
     team?: string;
     targetType?: string;

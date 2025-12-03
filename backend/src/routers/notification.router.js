@@ -48,7 +48,7 @@ router.get(
     if (!req.user?.isAdmin) {
       q.user = toId(req.user.id);
     } else if (!q.user) {
-      // admin có thể xem tất cả, nhưng nếu không truyền user thì thôi để trống
+      
     }
 
     const [items, total] = await Promise.all([
@@ -75,7 +75,7 @@ router.get(
     if (!req.user?.isAdmin) {
       q.user = toId(req.user.id);
     } else if (!q.user) {
-      // admin có thể đếm tất cả nếu không truyền user
+      
     }
 
     const count = await NotificationModel.countDocuments(q);
@@ -203,7 +203,7 @@ router.post(
     const { before, types, channels } = req.body || {};
     const q = { isRead: false };
 
-    // scope user
+    
     if (req.user?.isAdmin && req.query.user && isValidId(req.query.user)) {
       q.user = toId(req.query.user);
     } else {

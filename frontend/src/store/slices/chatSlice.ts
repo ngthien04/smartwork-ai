@@ -1,4 +1,4 @@
-// src/store/slices/chatSlice.ts
+
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { ChatState, ChatMessage } from '@/types';

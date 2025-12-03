@@ -78,7 +78,7 @@ export default function ProjectDetailPage() {
     return typeof team === 'string' ? team : team._id;
   }, [project]);
 
-  // ---------- FETCH DATA ----------
+  
   useEffect(() => {
     const fetchAll = async () => {
       if (!projectId) return;
@@ -108,7 +108,7 @@ export default function ProjectDetailPage() {
         const labelsData = labelRes.data.items || labelRes.data || [];
         setLabels(labelsData);
 
-        // map overview
+        
         const byStatus = overviewRes.data.byStatus || [];
         const map: any = { backlog: 0, todo: 0, in_progress: 0, done: 0, review: 0, blocked: 0 };
         byStatus.forEach((item) => {
@@ -128,7 +128,7 @@ export default function ProjectDetailPage() {
     fetchAll();
   }, [projectId]);
 
-  // ---------- CALCULATE COMPLETION ----------
+  
   const totalTasks = useMemo(
     () => overview.backlog + overview.todo + overview.in_progress + overview.review + overview.blocked + overview.done,
     [overview]
@@ -155,7 +155,7 @@ export default function ProjectDetailPage() {
     return userObj?.name || 'Chưa gán';
   }, [teamMembers]);
 
-  // ---------- CREATE TASK ----------
+  
   const openCreateTaskModal = () => {
     if (!teamId) return message.error('Chưa xác định team');
     taskForm.resetFields();
@@ -201,11 +201,11 @@ export default function ProjectDetailPage() {
 
       message.success('Đã tạo task thành công');
 
-      // Đóng modal + reset form
+      
       setTaskModalOpen(false);
       taskForm.resetFields();
 
-      // ===== Reload tasks + overview =====
+      
       const [taskRes, overviewRes] = await Promise.all([
         taskServices.list({
           team: teamId,
@@ -259,21 +259,21 @@ export default function ProjectDetailPage() {
       setCreatingLabel(true);
 
       const res = await labelServices.create({
-        team: teamId,              // 👈 dùng teamId đã useMemo ở trên
-        project: project._id,      // 👈 dùng project hiện tại
+        team: teamId,              
+        project: project._id,      
         name: newLabelName.trim(),
         color: newLabelColor,
       });
 
       const created: Label = res.data || res;
 
-      // Thêm vào list labels để Select hiển thị
+      
       setLabels((prev) => [...prev, created]);
 
-      // 🚀 LẤY GIÁ TRỊ labels HIỆN TẠI TRONG FORM (DÙNG taskForm, KHÔNG PHẢI form)
+      
       const current: string[] = taskForm.getFieldValue('labels') || [];
 
-      // Merge: nếu chưa có thì thêm
+      
       if (!current.includes(String(created._id))) {
         taskForm.setFieldsValue({
           labels: [...current, String(created._id)],
@@ -302,7 +302,7 @@ export default function ProjectDetailPage() {
     );
   }
 
-  // ---------- PROGRESS STACKED BAR COMPONENT ----------
+  
   const ProgressStacked = ({ overview }: { overview: StatusOverview }) => {
     const segments = [
       { label: 'Backlog', value: overview.backlog, color: '#d9d9d9' },

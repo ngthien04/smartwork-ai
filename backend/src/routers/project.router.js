@@ -35,7 +35,7 @@ router.get(
     const { team, q, isArchived, page = 1, limit = 20, sort = '-updatedAt' } = req.query;
     if (!team) return res.status(BAD_REQUEST).send('Missing team');
 
-    const teamDoc = await TeamModel.findById(team).populate('members.user', 'name email'); // populate user info
+    const teamDoc = await TeamModel.findById(team).populate('members.user', 'name email'); 
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
 
     const isMember = teamDoc.members?.some((m) => String(m.user._id) === String(req.user.id));
@@ -54,7 +54,7 @@ router.get(
 
     const [projects, total] = await Promise.all([
       ProjectModel.find(filter)
-        .populate('lead', 'name email avatarUrl') // project lead
+        .populate('lead', 'name email avatarUrl') 
         .sort(sort)
         .skip(skip)
         .limit(Number(limit))
@@ -62,7 +62,7 @@ router.get(
       ProjectModel.countDocuments(filter),
     ]);
 
-    // Lấy stats task
+    
     const projectIds = projects.map((p) => p._id);
     const stats = await TaskModel.aggregate([
       { $match: { project: { $in: projectIds }, isDeleted: { $ne: true } } },
@@ -85,7 +85,7 @@ router.get(
       statsMap.set(String(s._id), s);
     }
 
-    // map project + leadName
+    
     const items = projects.map((p) => {
       const st = statsMap.get(String(p._id)) || {};
 
@@ -130,8 +130,8 @@ router.get(
   })
 );
 
-// POST /api/projects   (leader/admin)
-// body: { team, name, key, description?, lead? }
+
+
 router.post(
   '/',
   authMid,
@@ -247,7 +247,7 @@ router.put(
   })
 );
 
-// DELETE /api/projects/:projectId   (leader/admin) — soft delete + soft delete tasks
+
 router.delete(
   '/:projectId',
   authMid,
@@ -263,18 +263,18 @@ router.delete(
 
     const now = new Date();
 
-    // 1) Soft delete project
+    
     proj.isDeleted = true;
     proj.deletedAt = now;
     await proj.save();
 
-    // 2) Soft delete tất cả task thuộc project này
+    
     await TaskModel.updateMany(
       { project: proj._id, isDeleted: { $ne: true } },
       { $set: { isDeleted: true, deletedAt: now } },
     );
 
-    // 3) Ghi activity
+    
     await recordActivity({
       team: proj.team,
       actor: req.user.id,

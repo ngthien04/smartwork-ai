@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx
+
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { jwtDecode } from 'jwt-decode';
 
@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const decoded: any = jwtDecode(token);
 
-        // <-- Console log để xem payload
+        
         console.log('Decoded JWT:', decoded);
 
         const u: AuthUser = {

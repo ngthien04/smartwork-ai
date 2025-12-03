@@ -1,4 +1,4 @@
-// src/components/tasks/Kanban.tsx
+
 import type { MouseEvent } from 'react';
 import { Card, Tag, Typography, Tooltip } from 'antd';
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
@@ -11,7 +11,7 @@ const { Text } = Typography;
 interface KanbanProps {
   tasks: Task[];
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
-  onTaskDelete: (taskId: string) => void;      // vẫn giữ prop nếu chỗ khác còn dùng
+  onTaskDelete: (taskId: string) => void;      
   onCreateTask?: (status: Task['status']) => void;
   onTaskSelect?: (task: Task) => void;
 }
@@ -36,7 +36,7 @@ const priorityConfig: Record<string, { color: string }> = {
 export default function Kanban({
   tasks,
   onTaskUpdate,
-  onTaskDelete,     // chưa dùng nữa trong Kanban, nhưng có thể chỗ khác vẫn pass vào
+  onTaskDelete,     
   onTaskSelect,
 }: KanbanProps) {
   const handleDragEnd = (result: DropResult) => {
@@ -53,13 +53,13 @@ export default function Kanban({
   const renderTask = (task: Task, index: number) => {
     const priority = task.priority || 'medium';
 
-    // Lấy tên project từ task.project (có thể là id hoặc object)
+    
     const project: any = (task as any).project;
     let projectName = '';
 
     if (project) {
       if (typeof project === 'string') {
-        // nếu backend chỉ trả về id string, tạm hiển thị id
+        
         projectName = project;
       } else if (typeof project === 'object') {
         projectName = project.name || project.key || '';
@@ -108,7 +108,7 @@ export default function Kanban({
                 <Card
                   size="small"
                   className="hover:shadow-md transition-shadow cursor-pointer"
-                  // ❌ Bỏ hoàn toàn actions => không còn icon ⋮, không xoá/sửa trong Kanban nữa
+                  
                   onClick={handleCardClick}
                 >
                   <div className="space-y-2">

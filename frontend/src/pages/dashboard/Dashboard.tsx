@@ -1,4 +1,4 @@
-// src/pages/dashboard/Dashboard.tsx
+
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -42,9 +42,9 @@ export default function Dashboard() {
     onSuccess: (res) => {
       message.success('Đã tham gia team thành công');
       queryClient.invalidateQueries({ queryKey: ['my-invites'] });
-      // nếu bạn có query team/list thì invalidate luôn cho đồng bộ:
+      
       queryClient.invalidateQueries({ queryKey: ['teams'] });
-      // nếu backend trả teamId thì có thể navigate sang /teams/:id tại đây luôn
+      
       const teamId = (res.data as any)?.team?._id || (res.data as any)?.teamId;
       if (teamId) {
         navigate(`/teams/${teamId}`);
@@ -72,10 +72,17 @@ export default function Dashboard() {
     queryFn: () => taskServices.list({ limit: 20 }),
   });
 
-  const { data: notesResponse } = useQuery({
-    queryKey: ['dashboard', 'notes'],
-    queryFn: () => noteServices.list({ page: 1, size: 1 }),
-  });
+const { data: notesRes } = useQuery({
+  queryKey: ['dashboard', 'notes'],
+  queryFn: () => noteServices.list({ page: 1, size: 1 }),
+});
+
+  const notesTotal = useMemo(() => {
+    const data = notesRes?.data;
+    if (!data) return undefined;
+    if (Array.isArray(data)) return data.length; 
+    return data.total ?? data.items?.length ?? 0; 
+  }, [notesRes]);
 
   const { data: eventsResponse } = useQuery({
     queryKey: ['dashboard', 'events'],
@@ -153,7 +160,7 @@ export default function Dashboard() {
     },
     {
       label: 'Ghi chú đã tạo',
-      value: notesResponse?.total ?? '—',
+      value: notesTotal ?? '—',
       color: 'text-blue-600',
     },
     {
