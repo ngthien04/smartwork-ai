@@ -1,4 +1,4 @@
-
+import { useLocation } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -71,6 +71,7 @@ export default function TeamManagementPage() {
 
   
   const [deleteTeamModalVisible, setDeleteTeamModalVisible] = useState(false);
+  const location = useLocation();
 
   
   const loadTeamAndMembers = async (explicitTeamId?: string) => {
@@ -112,6 +113,9 @@ export default function TeamManagementPage() {
     loadTeamAndMembers();
   }, [routeTeamId]);
 
+    useEffect(() => {
+    loadTeamAndMembers();
+  }, [routeTeamId, location.search]);
   
   const dataSource: MemberRow[] = useMemo(
     () =>

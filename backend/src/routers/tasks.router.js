@@ -686,42 +686,49 @@ router.put(
 );
 
 
-
-
 router.delete(
-  '/:taskId/subtasks/:subtaskId',
+  '/:taskId',
   authMid,
   handler(async (req, res) => {
-    const { taskId, subtaskId } = req.params;
+    const { taskId } = req.params;
 
-    const st = await SubtaskModel.findOneAndDelete({
-      _id: subtaskId,
-      parentTask: taskId,
+    const t = await TaskModel.findById(taskId).lean();
+    if (!t) return res.status(404).send('Task không tồn tại');
+
+    const userId = String(req.user?.id);
+
+    // lấy role theo team từ DB (đừng tin token)
+    const me = await UserModel.findById(req.user.id, { roles: 1, isAdmin: 1 }).lean();
+    const teamRole =
+      me?.roles?.find((r) => r?.team && String(r.team) === String(t.team))?.role || null;
+
+    const isGlobalAdmin = !!me?.isAdmin;
+    const isReporter = t.reporter && String(t.reporter) === userId;
+    const isTeamLeaderOrAdmin = teamRole === 'leader' || teamRole === 'admin';
+
+    // ===== DEBUG (xong rồi bạn có thể xoá log) =====
+    console.log('[DELETE TASK DEBUG]', {
+      taskId,
+      taskTeam: String(t.team),
+      userId,
+      isGlobalAdmin,
+      teamRole,
+      isReporter,
+      allow: isGlobalAdmin || isReporter || isTeamLeaderOrAdmin,
     });
-    if (!st) return res.status(404).send('Subtask không tồn tại');
 
-    const task = await TaskModel.findById(taskId).lean();
-    await recordActivity({
-      team: task.team,
-      actor: req.user.id,
-      verb: 'subtask_deleted',
-      targetType: 'task',
-      targetId: task._id,
-      metadata: { subtaskId },
-    });
+    if (!isGlobalAdmin && !isReporter && !isTeamLeaderOrAdmin) {
+      return res.status(401).send('Không có quyền xoá task này');
+    }
 
-    await notifyTaskParticipants(task, 'subtask_updated', {
-      action: 'deleted',
-      subtaskId,
-    });
+    await TaskModel.updateOne(
+      { _id: t._id },
+      { $set: { isDeleted: true, deletedAt: new Date() } }
+    );
 
-    res.send();
+    return res.send({ ok: true });
   }),
 );
-
-
-
-
 
 router.post(
   '/:taskId/labels',

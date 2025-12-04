@@ -45,7 +45,7 @@ function isLeaderOrAdmin(teamDoc, user) {
 
 function canInvite(teamDoc, user) {
   
-  return isTeamMember(teamDoc, user);
+  return isLeaderOrAdmin(teamDoc, user);
 }
 
 
