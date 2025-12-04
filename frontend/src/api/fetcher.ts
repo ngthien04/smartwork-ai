@@ -1,4 +1,3 @@
-// src/api/fetcher.ts
 import axios from 'axios';
 
 export const fetcher = axios.create({
@@ -6,7 +5,6 @@ export const fetcher = axios.create({
   timeout: 10000,
 });
 
-// Request interceptor để thêm token
 fetcher.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -20,7 +18,6 @@ fetcher.interceptors.request.use(
   }
 );
 
-// Response interceptor để xử lý lỗi
 fetcher.interceptors.response.use(
   (response) => response,
   (error) => {

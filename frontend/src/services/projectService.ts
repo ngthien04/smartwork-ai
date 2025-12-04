@@ -1,9 +1,8 @@
-// src/services/projectServices.ts
+
 import api from './api';
-import { DEFAULT_TEAM_ID } from '@/data/mockData'; // team mock nhưng id phải tồn tại ở BE
 
 export interface ProjectListParams {
-  team?: string;        
+  team: string;            
   q?: string;
   isArchived?: boolean;
   page?: number;
@@ -12,22 +11,27 @@ export interface ProjectListParams {
 }
 
 export interface CreateProjectPayload {
+  team: string;           
   name: string;
   key: string;
   description?: string;
   lead?: string;
-  teamId?: string;      
+}
+
+export interface UpdateProjectPayload {
+  name?: string;
+  key?: string;
+  description?: string;
+  lead?: string | null;
+  isArchived?: boolean;
 }
 
 const projectServices = {
-  // GET /api/projects
-  list(params: ProjectListParams = {}) {
-    const team = params.team || DEFAULT_TEAM_ID;
-
+  
+  list(params: ProjectListParams) {
     return api.get('/projects', {
       params: {
         ...params,
-        team,
         ...(typeof params.isArchived === 'boolean'
           ? { isArchived: String(params.isArchived) }
           : {}),
@@ -35,22 +39,34 @@ const projectServices = {
     });
   },
 
-  // GET /api/projects/:projectId
+  
   getById(projectId: string) {
     return api.get(`/projects/${projectId}`);
   },
 
-  // POST /api/projects
+  
   create(payload: CreateProjectPayload) {
-    const team = payload.teamId || DEFAULT_TEAM_ID;
+    return api.post('/projects', payload);
+  },
 
-    return api.post('/projects', {
-      team,
-      name: payload.name,
-      key: payload.key,
-      description: payload.description,
-      lead: payload.lead,
-    });
+  
+  update(projectId: string, payload: UpdateProjectPayload) {
+    return api.put(`/projects/${projectId}`, payload);
+  },
+
+  
+  archive(projectId: string, isArchived = true) {
+    return api.put(`/projects/${projectId}/archive`, { isArchived });
+  },
+
+  
+  delete(projectId: string) {
+    return api.delete(`/projects/${projectId}`);
+  },
+
+  
+  getOverview(projectId: string) {
+    return api.get(`/projects/${projectId}/stats/overview`);
   },
 };
 

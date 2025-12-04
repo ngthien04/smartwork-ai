@@ -1,4 +1,3 @@
-// src/routers/aiInsight.router.js
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
@@ -18,7 +17,6 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   } catch {}
 }
 
-// ---- permission helpers ------------------------------------------------------
 async function userHasAnyRoleInTeam(userId, teamId) {
   if (!teamId) return false;
   const exists = await UserModel.exists({
@@ -43,7 +41,6 @@ async function canManageInsight(user, doc) {
   return userCanManageTeam(user.id, doc.team);
 }
 
-// ---- query builder -----------------------------------------------------------
 function buildQuery(qs) {
   const q = {};
   if (qs.team && isValidId(qs.team)) q.team = toId(qs.team);
@@ -83,7 +80,6 @@ function parsePaging(q) {
   return { page, limit, skip };
 }
 
-// GET /api/ai-insights?team=&task=&kind=&status=&from=&to=&scoreMin=&scoreMax=&page=&limit=&populate=1
 router.get(
   '/',
   authMid,
@@ -92,8 +88,6 @@ router.get(
     const q = buildQuery(req.query);
     const populate = req.query.populate === '1' || req.query.populate === 'true';
 
-    // Nếu không phải admin và không lọc theo team,
-    // giới hạn theo các team user đang thuộc
     if (!req.user?.isAdmin && !q.team) {
       const me = await UserModel.findById(req.user.id, { roles: 1 }).lean();
       const teamIds = (me?.roles || []).map((r) => r.team).filter(Boolean);
@@ -112,7 +106,6 @@ router.get(
   })
 );
 
-// GET /api/ai-insights/:id
 router.get(
   '/:id',
   authMid,
@@ -134,9 +127,6 @@ router.get(
   })
 );
 
-// POST /api/ai-insights { team?, task?, kind, message, score? }
-// - nếu có task ⇒ team lấy theo task.project.team
-// - yêu cầu: user là admin hoặc có role trong team
 router.post(
   '/',
   authMid,
@@ -151,9 +141,8 @@ router.post(
       if (!isValidId(task)) return res.status(BAD_REQUEST).send('Invalid task id');
       const t = await TaskModel.findById(task).lean();
       if (!t || t.isDeleted) return res.status(404).send('Task không tồn tại');
-      // project -> team
       const proj = await ProjectModel.findById(t.project).lean();
-      teamId = proj?.team || t.team || teamId; // fallback
+      teamId = proj?.team || t.team || teamId; 
     }
 
     if (!teamId) return res.status(BAD_REQUEST).send('Không xác định được team cho insight');
@@ -185,16 +174,6 @@ router.post(
   })
 );
 
-// POST /api/ai-insights/:id/accept
-// body (optional): {
-//   apply?: {
-//     priority?: "low"|"normal"|"high"|"urgent",
-//     dueDate?: string | Date,
-//     labelIds?: string[],
-//     labelNames?: string[],   // sẽ upsert theo team/project
-//     projectId?: string       // nếu task không có project mà bạn muốn gán labelNames
-//   }
-// }
 router.post(
   '/:id/accept',
   authMid,
@@ -209,12 +188,10 @@ router.post(
       return res.status(UNAUTHORIZED).send('Không có quyền accept insight này');
     }
 
-    // Đánh dấu accept
     insight.acceptedBy = toId(req.user.id);
     insight.acceptedAt = new Date();
     await insight.save();
 
-    // Nếu insight liên quan task thì thử apply thay đổi
     let appliedPatch = null;
     let updatedTask = null;
 
@@ -222,14 +199,11 @@ router.post(
       const task = await TaskModel.findById(insight.task).lean();
       if (!task) return res.status(404).send('Task không tồn tại');
 
-      // Chuẩn bị patch từ body.apply nếu có
       const explicit = await buildExplicitPatch(req.body?.apply, { task, teamId: insight.team });
 
-      // Nếu không có patch tường minh -> thử auto apply theo kind + message
       const auto = explicit || (await buildAutoPatchFromInsight(insight, task));
 
       if (auto && Object.keys(auto).length) {
-        // Nếu có labelNames, upsert sang labelIds
         if (auto.labelNames?.length) {
           const projId = task.project || req.body?.apply?.projectId || null;
           const labelIds = await upsertLabelsByNames({
@@ -241,7 +215,6 @@ router.post(
           delete auto.labelNames;
         }
 
-        // Chuẩn hoá patch để update Task
         const update = {};
         const metadata = {};
 
@@ -254,7 +227,6 @@ router.post(
           metadata.dueDate = update.dueDate;
         }
         if (auto.labelIds?.length) {
-          // gộp với labels hiện có (unique)
           const current = (task.labels || []).map(String);
           const merged = Array.from(new Set([...current, ...auto.labelIds.map(String)])).map(toId);
           update.labels = merged;
@@ -277,7 +249,6 @@ router.post(
       }
     }
 
-    // Log accept
     await recordActivity({
       team: insight.team,
       actor: req.user.id,
@@ -287,7 +258,6 @@ router.post(
       metadata: { insightId: insight._id, applied: !!appliedPatch },
     });
 
-    // Trả về insight + (tuỳ chọn) task đã update
     const populated = await AIInsightModel.findById(insight._id)
       .populate('acceptedBy', 'name email avatarUrl')
       .populate('task', 'title status project team priority dueDate labels')
@@ -298,7 +268,6 @@ router.post(
 );
 
 
-// POST /api/ai-insights/:id/dismiss
 router.post(
   '/:id/dismiss',
   authMid,
@@ -334,7 +303,6 @@ router.post(
   })
 );
 
-// DELETE /api/ai-insights/:id
 router.delete(
   '/:id',
   authMid,
@@ -363,7 +331,6 @@ router.delete(
   })
 );
 
-// Patch tường minh từ body
 async function buildExplicitPatch(apply, ctx) {
   if (!apply) return null;
   const out = {};
@@ -384,29 +351,24 @@ async function buildExplicitPatch(apply, ctx) {
   return Object.keys(out).length ? out : null;
 }
 
-// Auto suy đoán dựa trên kind + message (rule đơn giản, có thể nâng cấp tuỳ ý)
 async function buildAutoPatchFromInsight(insight, task) {
   const { kind, message = '' } = insight;
   const out = {};
 
-  // priority_suggestion → tìm priority trong message, ví dụ: "priority=high"
   if (kind === 'priority_suggestion') {
     const m = /priority\s*=\s*(low|normal|high|urgent)/i.exec(message);
     if (m) out.priority = m[1].toLowerCase();
   }
 
-  // risk_warning → thêm label "risk"
   if (kind === 'risk_warning') {
     out.labelNames = [...(out.labelNames || []), 'risk'];
   }
 
-  // timeline_prediction → tìm date trong message (yyyy-mm-dd)
   if (kind === 'timeline_prediction') {
     const m = /(\d{4}-\d{2}-\d{2})/.exec(message);
     if (m) out.dueDate = m[1];
   }
 
-  // workload_balance → gắn label "workload"
   if (kind === 'workload_balance') {
     out.labelNames = [...(out.labelNames || []), 'workload'];
   }
@@ -414,12 +376,11 @@ async function buildAutoPatchFromInsight(insight, task) {
   return Object.keys(out).length ? out : null;
 }
 
-// Tạo/tìm label theo tên, trả về mảng ObjectId
 async function upsertLabelsByNames({ teamId, projectId, names = [] }) {
   const safeNames = Array.from(new Set(names.map((s) => String(s).trim()).filter(Boolean)));
   if (!safeNames.length) return [];
 
-  // Mặc định gắn theo team; nếu có projectId thì set chung (tuỳ thiết kế index unique của bạn)
+  
   const found = await LabelModel.find({
     name: { $in: safeNames },
     ...(teamId ? { team: toId(teamId) } : {}),
@@ -435,7 +396,7 @@ async function upsertLabelsByNames({ teamId, projectId, names = [] }) {
         name,
         team: teamId ? toId(teamId) : undefined,
         project: projectId ? toId(projectId) : undefined,
-        color: '#F87171', // đỏ nhạt mặc định; có thể random/tuỳ biến
+        color: '#F87171', 
       })),
       { ordered: false }
     );

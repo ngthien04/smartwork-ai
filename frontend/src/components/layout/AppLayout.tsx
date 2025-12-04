@@ -1,4 +1,4 @@
-// src/components/layout/AppLayout.tsx
+
 import React, { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '@/types';
@@ -14,10 +14,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const dispatch = useDispatch();
   const { sidebarCollapsed } = useSelector((state: RootState) => state.ui);
 
-  // Keyboard shortcuts
+  
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + K for command palette
+      
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         dispatch({ type: 'ui/setCommandPaletteOpen', payload: true });

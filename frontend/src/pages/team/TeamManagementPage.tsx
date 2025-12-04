@@ -1,4 +1,4 @@
-// src/pages/TeamManagementPage.tsx
+
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -18,7 +18,7 @@ import {
   Spin,
   Modal,
 } from 'antd';
-import { UserAddOutlined, TeamOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { UserAddOutlined, TeamOutlined} from '@ant-design/icons';
 import teamService, { type Team, type TeamMember, type TeamRole } from '@/services/teamService';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -44,32 +44,35 @@ export default function TeamManagementPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
 
-  // mời thành viên
+  
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<TeamRole>('member');
   const [inviting, setInviting] = useState(false);
 
-  // tạo team đầu tiên
+  
   const [creating, setCreating] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [teamSlug, setTeamSlug] = useState('');
 
-  // modal rời/gỡ member
+  const [createTeamModalVisible, setCreateTeamModalVisible] = useState(false);
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamSlug, setNewTeamSlug] = useState('');
+
+  
   const [removeMemberModalVisible, setRemoveMemberModalVisible] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<MemberRow | null>(null);
 
-  // modal đổi role
+  
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [memberEditingRole, setMemberEditingRole] = useState<MemberRow | null>(null);
   const [newRoleValue, setNewRoleValue] = useState<TeamRole>('member');
   const [changingRole, setChangingRole] = useState(false);
 
-  // modal giải tán team
+  
   const [deleteTeamModalVisible, setDeleteTeamModalVisible] = useState(false);
 
-  const userId = user?._id || (user as any)?.id;
-
-  // ================= LOAD TEAM + MEMBERS =================
+  
   const loadTeamAndMembers = async (explicitTeamId?: string) => {
     try {
       setLoading(true);
@@ -109,7 +112,7 @@ export default function TeamManagementPage() {
     loadTeamAndMembers();
   }, [routeTeamId]);
 
-  // ================= DERIVED DATA =================
+  
   const dataSource: MemberRow[] = useMemo(
     () =>
       members.map((member) => {
@@ -138,7 +141,7 @@ export default function TeamManagementPage() {
 
   const isLeaderOrAdmin = myRole === 'leader' || myRole === 'admin';
 
-  // ================= TẠO TEAM ĐẦU TIÊN =================
+  
   const handleCreateFirstTeam = async () => {
     if (!teamName || !teamSlug) {
       message.warning('Nhập tên và mã team trước');
@@ -157,7 +160,29 @@ export default function TeamManagementPage() {
     }
   };
 
-  // ================= MỜI THÀNH VIÊN =================
+  
+  const handleCreateTeam = async () => {
+    if (!newTeamName || !newTeamSlug) {
+      message.warning('Nhập tên và mã team trước');
+      return;
+    }
+    try {
+      setCreatingTeam(true);
+      const res = await teamService.createTeam({ name: newTeamName, slug: newTeamSlug });
+      message.success('Đã tạo team mới');
+      setNewTeamName('');
+      setNewTeamSlug('');
+      setCreateTeamModalVisible(false);
+      await loadTeamAndMembers(res.data._id); 
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.response?.data || 'Tạo team thất bại');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  
   const handleInvite = async () => {
     if (!email) {
       message.warning('Nhập email thành viên trước');
@@ -204,7 +229,7 @@ export default function TeamManagementPage() {
     }
   };
 
-  // ================= ĐỔI ROLE =================
+  
   const showChangeRoleModal = (record: MemberRow) => {
     setMemberEditingRole(record);
     setNewRoleValue(record.role);
@@ -232,7 +257,7 @@ export default function TeamManagementPage() {
     }
   };
 
-  // ================= MODAL RỜI / GỠ THÀNH VIÊN =================
+  
   const showRemoveMemberModal = (record: MemberRow) => {
     setMemberToRemove(record);
     setRemoveMemberModalVisible(true);
@@ -244,7 +269,25 @@ export default function TeamManagementPage() {
     try {
       await teamService.removeMember(team._id, memberToRemove.userId);
       message.success(isMe ? 'Bạn đã rời team' : 'Đã gỡ thành viên khỏi team');
-      await loadTeamAndMembers(team._id);
+
+      if (isMe) {
+        
+        const listRes = await teamService.listMyTeams();
+        const myTeams = listRes.data.items || [];
+
+        if (myTeams.length > 0) {
+          
+          await loadTeamAndMembers(myTeams[0]._id);
+          navigate(`/teams/${myTeams[0]._id}`);
+        } else {
+          
+          setTeam(null);
+          setMembers([]);
+        }
+      } else {
+        
+        await loadTeamAndMembers(team._id);
+      }
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Thao tác thất bại');
@@ -254,7 +297,7 @@ export default function TeamManagementPage() {
     }
   };
 
-  // ================= MODAL GIẢI TÁN TEAM =================
+  
   const showDeleteTeamModal = () => setDeleteTeamModalVisible(true);
 
   const handleDeleteTeamOk = async () => {
@@ -262,7 +305,20 @@ export default function TeamManagementPage() {
     try {
       await teamService.deleteTeam(team._id);
       message.success('Đã giải tán team');
-      await loadTeamAndMembers();
+
+      
+      const listRes = await teamService.listMyTeams();
+      const myTeams = listRes.data.items || [];
+
+      if (myTeams.length > 0) {
+        
+        const nextTeamId = myTeams[0]._id;
+        await loadTeamAndMembers(nextTeamId);
+        navigate(`/teams/${nextTeamId}`);
+      } else {
+        setTeam(null);
+        setMembers([]);
+      }
     } catch (err: any) {
       console.error(err);
       message.error(err?.response?.data || 'Không giải tán được team');
@@ -271,7 +327,7 @@ export default function TeamManagementPage() {
     }
   };
 
-  // ================= RENDER =================
+  
   if (loading) return <Spin tip="Đang tải team..." className="w-full h-full flex justify-center items-center" />;
 
   if (!team)
@@ -307,7 +363,14 @@ export default function TeamManagementPage() {
               <Text type="secondary" className="mr-2">
                 Chuyển team:
               </Text>
-              <Select style={{ minWidth: 200 }} value={team._id} onChange={(value) => navigate(`/teams/${value}`)}>
+              <Select
+                style={{ minWidth: 200 }}
+                value={team._id}
+                onChange={async (value) => {
+                  navigate(`/teams/${value}`);
+                  await loadTeamAndMembers(value); 
+                }}
+              >
                 {teams.map((t) => (
                   <Option key={t._id} value={t._id}>
                     {t.name}
@@ -320,6 +383,9 @@ export default function TeamManagementPage() {
         <Space>
           <Button icon={<TeamOutlined />} onClick={() => navigate('/projects')}>
             Xem dự án liên quan
+          </Button>
+          <Button type="primary" onClick={() => setCreateTeamModalVisible(true)}>
+            Tạo team mới
           </Button>
           {user && (
             <Button
@@ -467,6 +533,28 @@ export default function TeamManagementPage() {
             ? 'Bạn sẽ rời khỏi team này và mất quyền truy cập.'
             : `Thao tác này sẽ gỡ ${memberToRemove?.name} khỏi team.`}
         </p>
+      </Modal>
+
+      <Modal
+        title="Tạo team mới"
+        open={createTeamModalVisible}
+        onCancel={() => setCreateTeamModalVisible(false)}
+        onOk={handleCreateTeam}
+        okText="Tạo team"
+        confirmLoading={creatingTeam}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Input
+            placeholder="Tên team"
+            value={newTeamName}
+            onChange={(e) => setNewTeamName(e.target.value)}
+          />
+          <Input
+            placeholder="Mã/slug"
+            value={newTeamSlug}
+            onChange={(e) => setNewTeamSlug(e.target.value)}
+          />
+        </Space>
       </Modal>
 
       {/* MODAL ĐỔI ROLE */}

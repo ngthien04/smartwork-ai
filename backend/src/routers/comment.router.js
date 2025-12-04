@@ -17,7 +17,8 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   } catch {}
 }
 
-// GET /api/comments?task=<taskId>&page=&limit=
+
+
 router.get(
   '/',
   authMid,
@@ -32,6 +33,7 @@ router.get(
     const [items, total] = await Promise.all([
       CommentModel.find({ task: toId(task) })
         .populate('author', 'name email avatarUrl')
+        .populate('mentions', 'name email avatarUrl')   
         .sort('-createdAt')
         .skip(skip)
         .limit(Number(limit))
@@ -43,8 +45,8 @@ router.get(
   })
 );
 
-// POST /api/comments  (create comment)
-// body: { task, content, mentions?[] }
+
+
 router.post(
   '/',
   authMid,
@@ -73,15 +75,14 @@ router.post(
 
     const populated = await CommentModel.findById(cmt._id)
       .populate('author', 'name email avatarUrl')
+      .populate('mentions', 'name email avatarUrl')   
       .lean();
 
     res.status(201).send(populated);
   })
 );
 
-// PUT /api/comments/:commentId  (edit comment)
-// body: { content }
-// chỉ cho phép tác giả hoặc admin
+
 router.put(
   '/:commentId',
   authMid,
@@ -96,14 +97,15 @@ router.put(
     const task = await TaskModel.findById(cmt.task).lean();
     if (!task) return res.status(404).send('Task không tồn tại');
 
-    // chỉ cho author hoặc admin
+    
     if (!req.user.isAdmin && String(cmt.author) !== String(req.user.id)) {
       return res.status(UNAUTHORIZED).send('Không có quyền sửa comment này');
     }
 
     cmt.content = content;
-    cmt.edited = true;
-    cmt.editedAt = new Date();
+    cmt.isEdited = true;          
+    
+    
     await cmt.save();
 
     await recordActivity({
@@ -117,13 +119,15 @@ router.put(
 
     const updated = await CommentModel.findById(cmt._id)
       .populate('author', 'name email avatarUrl')
+      .populate('mentions', 'name email avatarUrl')   
       .lean();
+
     res.send(updated);
   })
 );
 
-// DELETE /api/comments/:commentId  (delete comment)
-// chỉ author hoặc admin
+
+
 router.delete(
   '/:commentId',
   authMid,

@@ -1,4 +1,4 @@
-// src/pages/calendar/CalendarPage.tsx
+
 import { useMemo, useState } from 'react';
 import { Row, Col, Card, Button, Calendar, Modal, Form, Input, DatePicker, Space, Typography, List, message } from 'antd';
 import { PlusOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { calendarServices } from '@/services/calendarServices';
 import dayjs from 'dayjs';
-import { taskServices } from '@/services/taskServices';
+import taskServices, { type Task as ApiTask } from '@/services/taskServices';
 
 const { Title, Text } = Typography;
 export default function CalendarPage() {
@@ -18,7 +18,7 @@ export default function CalendarPage() {
 
   const queryClient = useQueryClient();
 
-  // Fetch events for current month
+  
   const { data: eventsData } = useQuery({
     queryKey: ['events', selectedDate.format('YYYY-MM')],
     queryFn: () => {
@@ -30,7 +30,7 @@ export default function CalendarPage() {
 
   const events = eventsData?.data || [];
 
-  // Create event mutation
+  
   const createEventMutation = useMutation({
     mutationFn: calendarServices.createEvent,
     onSuccess: () => {
@@ -39,7 +39,7 @@ export default function CalendarPage() {
     },
   });
 
-  // Update event mutation
+  
   const updateEventMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => 
       calendarServices.updateEvent(id, data),
@@ -48,7 +48,7 @@ export default function CalendarPage() {
     },
   });
 
-  // Delete event mutation
+  
   const deleteEventMutation = useMutation({
     mutationFn: calendarServices.removeEvent,
     onSuccess: () => {
@@ -56,7 +56,7 @@ export default function CalendarPage() {
     },
   });
 
-  // AI Suggest mutation
+  
   const aiSuggestMutation = useMutation({
     mutationFn: calendarServices.aiSuggest,
     onSuccess: (data) => {
@@ -66,13 +66,13 @@ export default function CalendarPage() {
 
   const { data: taskListResponse } = useQuery({
     queryKey: ['calendar', 'tasks'],
-    queryFn: () => taskServices.list({ size: 20 }),
+    queryFn: () => taskServices.list({ limit: 20 }),
   });
 
-  const pendingTasks = useMemo(() => {
-    const items = taskListResponse?.items || taskListResponse?.data || [];
-    return items.filter((task) => task.status !== 'done');
-  }, [taskListResponse]);
+const pendingTasks = useMemo<ApiTask[]>(() => {
+  const items = taskListResponse?.data?.items ?? [];
+  return items.filter((task: ApiTask) => task.status !== 'done');
+}, [taskListResponse]);
 
   const handleCreateEvent = () => {
     setEditingEvent(null);
@@ -119,7 +119,7 @@ export default function CalendarPage() {
 
     aiSuggestMutation.mutate({
       tasks: pendingTasks.map((task) => ({
-        id: task.id,
+        id: task._id,
         title: task.title,
         estimatedTime: task.estimate || task.storyPoints || 1,
         priority: task.priority,

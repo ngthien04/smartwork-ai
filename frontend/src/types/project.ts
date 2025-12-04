@@ -15,4 +15,8 @@ export interface Project {
   deletedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+
+  totalTasksCount?: number;
+  doneTasksCount?: number;
+  openTasksCount?: number;
 }

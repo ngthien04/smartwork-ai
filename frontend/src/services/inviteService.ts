@@ -21,27 +21,27 @@ export interface InviteListResponse {
 }
 
 const inviteService = {
-  // GET /api/invites?team=...
+  
   list(params?: { team?: string; page?: number; limit?: number }) {
     return api.get<InviteListResponse>('/invites', { params });
   },
 
-  // GET /api/invites/token/:token
+  
   getByToken(token: string) {
     return api.get<Invite>(`/invites/token/${token}`);
   },
 
-  // POST /api/invites/accept { token }
+  
   accept(token: string) {
     return api.post('/invites/accept', { token });
   },
 
-  // POST /api/invites/:inviteId/resend
+  
   resend(inviteId: string) {
     return api.post(`/invites/${inviteId}/resend`);
   },
 
-  // DELETE /api/invites/:inviteId
+  
   cancel(inviteId: string) {
     return api.delete(`/invites/${inviteId}`);
   },

@@ -1,4 +1,4 @@
-// src/pages/dashboard/Dashboard.tsx
+
 import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,12 +15,13 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { taskServices } from '@/services/taskServices';
+import taskServices from '@/services/taskServices';
 import { calendarServices } from '@/services/calendarServices';
 import { noteServices } from '@/services/noteServices';
 import inviteService, { type Invite } from '@/services/inviteService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Space, message } from 'antd';
+import type { Task as ApiTask } from '@/services/taskServices';
 
 
 export default function Dashboard() {
@@ -41,9 +42,9 @@ export default function Dashboard() {
     onSuccess: (res) => {
       message.success('Đã tham gia team thành công');
       queryClient.invalidateQueries({ queryKey: ['my-invites'] });
-      // nếu bạn có query team/list thì invalidate luôn cho đồng bộ:
+      
       queryClient.invalidateQueries({ queryKey: ['teams'] });
-      // nếu backend trả teamId thì có thể navigate sang /teams/:id tại đây luôn
+      
       const teamId = (res.data as any)?.team?._id || (res.data as any)?.teamId;
       if (teamId) {
         navigate(`/teams/${teamId}`);
@@ -68,13 +69,20 @@ export default function Dashboard() {
 
   const { data: tasksResponse } = useQuery({
     queryKey: ['dashboard', 'tasks'],
-    queryFn: () => taskServices.list({ size: 20 }),
+    queryFn: () => taskServices.list({ limit: 20 }),
   });
 
-  const { data: notesResponse } = useQuery({
-    queryKey: ['dashboard', 'notes'],
-    queryFn: () => noteServices.list({ page: 1, size: 1 }),
-  });
+const { data: notesRes } = useQuery({
+  queryKey: ['dashboard', 'notes'],
+  queryFn: () => noteServices.list({ page: 1, size: 1 }),
+});
+
+  const notesTotal = useMemo(() => {
+    const data = notesRes?.data;
+    if (!data) return undefined;
+    if (Array.isArray(data)) return data.length; 
+    return data.total ?? data.items?.length ?? 0; 
+  }, [notesRes]);
 
   const { data: eventsResponse } = useQuery({
     queryKey: ['dashboard', 'events'],
@@ -85,17 +93,21 @@ export default function Dashboard() {
     },
   });
 
-  const recentTasks = useMemo(() => {
-    const items = tasksResponse?.items || tasksResponse?.data || [];
+  const recentTasks = useMemo<ApiTask[]>(() => {
+    const items = tasksResponse?.data?.items ?? [];
     return items.slice(0, 5);
   }, [tasksResponse]);
 
+
   const completedTasks = useMemo(() => {
-    const items = tasksResponse?.items || tasksResponse?.data || [];
+    const items = tasksResponse?.data?.items ?? [];
     return items.filter((task) => task.status === 'done').length;
   }, [tasksResponse]);
 
-  const totalTasks = tasksResponse?.total ?? (tasksResponse?.items || tasksResponse?.data || []).length;
+  const totalTasks =
+    tasksResponse?.data?.total ??
+    (tasksResponse?.data?.items?.length ?? 0);
+
 
   const upcomingEvents = useMemo(() => {
     return (eventsResponse?.data || []).slice(0, 5);
@@ -148,7 +160,7 @@ export default function Dashboard() {
     },
     {
       label: 'Ghi chú đã tạo',
-      value: notesResponse?.total ?? '—',
+      value: notesTotal ?? '—',
       color: 'text-blue-600',
     },
     {
@@ -270,8 +282,8 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">Chưa có công việc nào gần đây.</p>
               ) : (
                 <div className="space-y-3">
-                  {recentTasks.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  {recentTasks.map((task: ApiTask) => (
+                    <div key={task._id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex items-center space-x-3">
                         {getStatusIcon(task.status)}
                         <div>

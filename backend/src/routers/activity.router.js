@@ -1,4 +1,3 @@
-// src/routers/activity.router.js
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
@@ -11,7 +10,6 @@ const handler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).
 const isValidId = (id) => mongoose.isValidObjectId(id);
 const toId = (v) => new mongoose.Types.ObjectId(String(v));
 
-/** permission helpers */
 async function userHasAnyRoleInTeam(userId, teamId) {
   if (!teamId) return false;
   const ok = await UserModel.exists({
@@ -33,7 +31,6 @@ async function canManageTeam(user, teamId) {
   return !!ok;
 }
 
-/** helpers */
 function parsePaging(q) {
   const page = Math.max(1, Number(q.page || 1));
   const limit = Math.max(1, Math.min(100, Number(q.limit || 20)));
@@ -55,10 +52,6 @@ function buildQuery(qs) {
   return q;
 }
 
-/**
- * GET /api/activities
- * Query: team?, targetType?, targetId?, actor?, verb?, from?, to?, page?, limit?
- */
 router.get(
   '/',
   authMid,
@@ -66,9 +59,6 @@ router.get(
     const { page, limit, skip } = parsePaging(req.query);
     const q = buildQuery(req.query);
 
-    // Quyền xem:
-    // - Nếu có filter team: phải có quyền team đó
-    // - Nếu không truyền team: giới hạn theo các team user thuộc (trừ site admin)
     if (q.team) {
       const ok = await canViewTeam(req.user, q.team);
       if (!ok) return res.status(UNAUTHORIZED).send('Không có quyền xem hoạt động của team này');
@@ -93,9 +83,6 @@ router.get(
   })
 );
 
-/**
- * GET /api/activities/:id
- */
 router.get(
   '/:id',
   authMid,
@@ -115,10 +102,6 @@ router.get(
   })
 );
 
-/**
- * DELETE /api/activities/:id
- * - chỉ admin hoặc team leader/admin
- */
 router.delete(
   '/:id',
   authMid,

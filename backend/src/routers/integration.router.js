@@ -1,4 +1,4 @@
-// src/routers/integration.router.js
+
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
@@ -17,7 +17,7 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   } catch {}
 }
 
-// ---- permission helpers ------------------------------------------------------
+
 async function userHasAnyRoleInTeam(userId, teamId) {
   if (!teamId) return false;
   const ok = await UserModel.exists({
@@ -42,7 +42,7 @@ async function canManageIntegration(user, teamId) {
   return userCanManageTeam(user.id, teamId);
 }
 
-// ---- helpers -----------------------------------------------------------------
+
 function parsePaging(q) {
   const page = Math.max(1, Number(q.page || 1));
   const limit = Math.max(1, Math.min(100, Number(q.limit || 20)));
@@ -58,7 +58,7 @@ function assertProvider(p) {
   }
 }
 
-// GET /api/integrations?team=&provider=&active=1|0&page=&limit=
+
 router.get(
   '/',
   authMid,
@@ -72,9 +72,9 @@ router.get(
     if (active === '1' || active === 'true') q.isActive = true;
     if (active === '0' || active === 'false') q.isActive = false;
 
-    // quyền xem: nếu không phải admin thì yêu cầu có role trong team.
+    
     if (!req.user?.isAdmin) {
-      // nếu không truyền team, giới hạn theo các team của user
+      
       if (!q.team) {
         const me = await UserModel.findById(req.user.id, { roles: 1 }).lean();
         const teamIds = (me?.roles || []).map((r) => r.team).filter(Boolean);
@@ -95,7 +95,7 @@ router.get(
   })
 );
 
-// GET /api/integrations/:id
+
 router.get(
   '/:id',
   authMid,
@@ -113,7 +113,7 @@ router.get(
   })
 );
 
-// POST /api/integrations { team, provider, config?, isActive? }
+
 router.post(
   '/',
   authMid,
@@ -145,7 +145,7 @@ router.post(
 
       res.status(201).send(doc);
     } catch (err) {
-      // handle unique index (team+provider)
+      
       if (err?.code === 11000) {
         return res.status(BAD_REQUEST).send('Integration của provider này đã tồn tại trong team');
       }
@@ -154,7 +154,7 @@ router.post(
   })
 );
 
-// PUT /api/integrations/:id  { config?, isActive? }
+
 router.put(
   '/:id',
   authMid,
@@ -187,7 +187,7 @@ router.put(
   })
 );
 
-// DELETE /api/integrations/:id
+
 router.delete(
   '/:id',
   authMid,
@@ -216,7 +216,7 @@ router.delete(
   })
 );
 
-// POST /api/integrations/:id/enable
+
 router.post(
   '/:id/enable',
   authMid,
@@ -246,7 +246,7 @@ router.post(
   })
 );
 
-// POST /api/integrations/:id/disable
+
 router.post(
   '/:id/disable',
   authMid,

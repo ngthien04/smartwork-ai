@@ -1,4 +1,4 @@
-// src/routers/sprint.router.js
+
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
@@ -24,7 +24,7 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
 async function canViewProject(user, project) {
   if (!project) return false;
   if (user?.isAdmin) return true;
-  // cho phép member trở lên xem sprint
+  
   const hasRole = await UserModel.exists({
     _id: user.id,
     roles: { $elemMatch: { team: project.team } },
@@ -77,7 +77,7 @@ router.get(
       if (to) match.startDate.$lte = new Date(to);
     }
 
-    // build pipeline để filter theo team qua project nếu cần
+    
     const pipeline = [];
 
     if (project && isValidId(project)) {
@@ -85,7 +85,7 @@ router.get(
     }
 
     if (team && isValidId(team)) {
-      // join project để lọc team
+      
       pipeline.push(
         { $lookup: { from: 'projects', localField: 'project', foreignField: '_id', as: 'project' } },
         { $unwind: '$project' },
@@ -93,14 +93,14 @@ router.get(
       );
     }
 
-    // quyền xem: cần có quyền với project (nếu truyền project), nếu không truyền -> lọc tất cả project user có role
+    
     if (project && isValidId(project)) {
       const proj = await ProjectModel.findById(project).lean();
       if (!proj || proj.isDeleted) return res.status(404).send('Project không tồn tại');
       const ok = await canViewProject(req.user, proj);
       if (!ok) return res.status(UNAUTHORIZED).send('Không có quyền xem sprint của project này');
     } else if (!req.user?.isAdmin) {
-      // hạn chế theo các team mà user có role nếu không truyền project/team
+      
       const user = await UserModel.findById(req.user.id, { roles: 1 }).lean();
       const teamIds = (user?.roles || []).map((r) => r.team).filter(Boolean);
       if (teamIds.length) {
@@ -110,7 +110,7 @@ router.get(
           { $match: { 'project.team': { $in: teamIds } } }
         );
       } else {
-        // user không thuộc team nào → trả rỗng
+        
         return res.send({ page, limit, total: 0, items: [] });
       }
     }
@@ -119,7 +119,7 @@ router.get(
     pipeline.push({ $sort: { startDate: 1, createdAt: 1 } });
     pipeline.push({ $skip: skip }, { $limit: limit });
 
-    // count total
+    
     const countPipeline = pipeline
       .filter((stg) => !('$skip' in stg) && !('$limit' in stg))
       .concat([{ $count: 'total' }]);
@@ -129,7 +129,7 @@ router.get(
       SprintModel.aggregate(countPipeline),
     ]);
 
-    // populate nhẹ project để trả về thông tin
+    
     const projectIds = [...new Set(itemsAgg.map((x) => String(x.project)))].map((id) => toId(id));
     const projects = await ProjectModel.find({ _id: { $in: projectIds } }, { name: 1, key: 1, team: 1 }).lean();
     const projectMap = new Map(projects.map((p) => [String(p._id), p]));

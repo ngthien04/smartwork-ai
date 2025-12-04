@@ -1,7 +1,24 @@
-// src/pages/notes/NotesPage.tsx
 import React, { useState } from 'react';
-import { Row, Col, Card, Button, Input, List, Typography, Space, Tag, Modal, Form } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, RobotOutlined } from '@ant-design/icons';
+import {
+  Row,
+  Col,
+  Card,
+  Button,
+  Input,
+  List,
+  Typography,
+  Space,
+  Tag,
+  Modal,
+  Form,
+} from 'antd';
+import {
+  PlusOutlined,
+  SearchOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  RobotOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
@@ -11,42 +28,61 @@ import { noteServices } from '@/services/noteServices';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
+
+type Note = {
+  id: string;
+  title: string;
+  content: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+
+const Markdown: React.FC<React.ComponentProps<typeof ReactMarkdown>> =
+  ReactMarkdown as any;
+
 export default function NotesPage() {
   const { t } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingNote, setEditingNote] = useState<any>(null);
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNote, setSelectedNote] = useState<any>(null);
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
 
+  const [form] = Form.useForm();
   const queryClient = useQueryClient();
 
-  // Fetch notes
-  const { data: notesData, isLoading } = useQuery({
+  
+  const { data: notesData, isLoading } = useQuery<Note[]>({
     queryKey: ['notes', { q: searchQuery }],
-    queryFn: () => noteServices.list({ q: searchQuery }),
+    queryFn: async () => {
+      const res = await noteServices.list({ q: searchQuery });
+      return res.data as Note[];
+    },
   });
 
-  const notes = notesData?.data || [];
+  const notes: Note[] = notesData || [];
 
-  // Create note mutation
+  
   const createNoteMutation = useMutation({
     mutationFn: noteServices.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
+      form.resetFields();
       setIsModalOpen(false);
     },
   });
 
-  // Update note mutation
   const updateNoteMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => 
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
       noteServices.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
+      form.resetFields();
+      setIsModalOpen(false);
     },
   });
 
-  // Delete note mutation
   const deleteNoteMutation = useMutation({
     mutationFn: noteServices.remove,
     onSuccess: () => {
@@ -54,22 +90,34 @@ export default function NotesPage() {
     },
   });
 
-  // AI Summarize mutation
   const summarizeMutation = useMutation({
     mutationFn: (noteId: string) => noteServices.aiSummarize(noteId),
-    onSuccess: (data, noteId) => {
-      // TODO: Show summary in modal or update note
-      console.log('AI Summary:', data);
+    onSuccess: (data) => {
+      Modal.info({
+        title: 'AI Tóm tắt',
+        content: (
+          <div>
+            {(data as any)?.data?.summary || (data as any)?.summary || 'Không có nội dung tóm tắt'}
+          </div>
+        ),
+      });
     },
   });
 
+  
   const handleCreateNote = () => {
     setEditingNote(null);
+    form.resetFields();
     setIsModalOpen(true);
   };
 
-  const handleEditNote = (note: any) => {
+  const handleEditNote = (note: Note) => {
     setEditingNote(note);
+    form.setFieldsValue({
+      title: note.title,
+      content: note.content,
+      tags: note.tags?.join(', ') || '',
+    });
     setIsModalOpen(true);
   };
 
@@ -82,10 +130,21 @@ export default function NotesPage() {
   };
 
   const handleModalSubmit = (values: any) => {
+    
+    const tagsArray: string[] =
+      typeof values.tags === 'string'
+        ? values.tags
+            .split(',')
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        : Array.isArray(values.tags)
+        ? values.tags
+        : [];
+
     const noteData = {
-      ...values,
-      createdAt: editingNote?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      title: values.title,
+      content: values.content,
+      tags: tagsArray,
     };
 
     if (editingNote) {
@@ -102,7 +161,9 @@ export default function NotesPage() {
   return (
     <div className="notes-page">
       <div className="mb-6">
-        <Title level={2} className="m-0">{t('notes.title')}</Title>
+        <Title level={2} className="m-0">
+          {t('notes.title')}
+        </Title>
       </div>
 
       <Row gutter={[24, 24]}>
@@ -131,10 +192,12 @@ export default function NotesPage() {
             <List
               dataSource={notes}
               loading={isLoading}
-              renderItem={(note) => (
+              renderItem={(note: Note) => (
                 <List.Item
                   className={`cursor-pointer hover:bg-gray-50 p-3 rounded ${
-                    selectedNote?.id === note.id ? 'bg-blue-50 border-blue-200' : ''
+                    selectedNote?.id === note.id
+                      ? 'bg-blue-50 border-blue-200'
+                      : ''
                   }`}
                   onClick={() => setSelectedNote(note)}
                   actions={[
@@ -173,15 +236,14 @@ export default function NotesPage() {
                     description={
                       <div>
                         <Text type="secondary" className="text-sm block mb-2">
-                          {note.content.length > 100 
-                            ? `${note.content.substring(0, 100)}...` 
-                            : note.content
-                          }
+                          {note.content.length > 100
+                            ? `${note.content.substring(0, 100)}...`
+                            : note.content}
                         </Text>
                         {note.tags && note.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {note.tags.map(tag => (
-                              <Tag key={tag} size="small" color="blue">
+                            {note.tags.map((tag: string) => (
+                              <Tag key={tag} color="blue">
                                 {tag}
                               </Tag>
                             ))}
@@ -203,9 +265,12 @@ export default function NotesPage() {
               <div className="h-full">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <Title level={3} className="m-0">{selectedNote.title}</Title>
+                    <Title level={3} className="m-0">
+                      {selectedNote.title}
+                    </Title>
                     <Text type="secondary">
-                      Cập nhật: {new Date(selectedNote.updatedAt).toLocaleString()}
+                      Cập nhật:{' '}
+                      {new Date(selectedNote.updatedAt).toLocaleString()}
                     </Text>
                   </div>
                   <Space>
@@ -224,20 +289,20 @@ export default function NotesPage() {
                     </Button>
                   </Space>
                 </div>
-
                 <div className="border-t pt-4">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    className="prose max-w-none"
-                  >
-                    {selectedNote.content}
-                  </ReactMarkdown>
+                  <div className="prose max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {selectedNote.content}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500">
                 <div className="text-center">
-                  <Text type="secondary">Chọn một ghi chú để xem nội dung</Text>
+                  <Text type="secondary">
+                    Chọn một ghi chú để xem nội dung
+                  </Text>
                 </div>
               </div>
             )}
@@ -252,12 +317,9 @@ export default function NotesPage() {
         onCancel={() => setIsModalOpen(false)}
         footer={null}
         width={800}
+        destroyOnClose
       >
-        <Form
-          layout="vertical"
-          onFinish={handleModalSubmit}
-          initialValues={editingNote || {}}
-        >
+        <Form layout="vertical" form={form} onFinish={handleModalSubmit}>
           <Form.Item
             name="title"
             label={t('notes.noteTitle')}
@@ -271,24 +333,14 @@ export default function NotesPage() {
             label={t('notes.noteContent')}
             rules={[{ required: true, message: 'Vui lòng nhập nội dung' }]}
           >
-            <TextArea 
-              rows={12} 
-              placeholder="Nhập nội dung ghi chú (hỗ trợ Markdown)..." 
+            <TextArea
+              rows={12}
+              placeholder="Nhập nội dung ghi chú (hỗ trợ **Markdown**, _italic_, danh sách, v.v.)..."
             />
           </Form.Item>
 
-          <Form.Item
-            name="tags"
-            label="Thẻ"
-          >
-            <Input
-              placeholder="Nhập thẻ, cách nhau bằng dấu phẩy"
-              onChange={(e) => {
-                // Convert comma-separated string to array
-                const tags = e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag);
-                // Update form value
-              }}
-            />
+          <Form.Item name="tags" label="Thẻ">
+            <Input placeholder="Nhập thẻ, cách nhau bằng dấu phẩy (VD: học, công việc, ý tưởng)" />
           </Form.Item>
 
           <Form.Item className="mb-0">
@@ -296,10 +348,12 @@ export default function NotesPage() {
               <Button onClick={() => setIsModalOpen(false)}>
                 {t('common.cancel')}
               </Button>
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 htmlType="submit"
-                loading={createNoteMutation.isPending || updateNoteMutation.isPending}
+                loading={
+                  createNoteMutation.isPending || updateNoteMutation.isPending
+                }
               >
                 {t('common.save')}
               </Button>

@@ -1,4 +1,3 @@
-// src/pages/auth/AuthPage.tsx
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Card, Form, Input, Button, Typography, Tabs, message } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
@@ -19,8 +18,20 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const { user, token } = useSelector((state: RootState) => state.auth);
 
+  
+  const isTokenExpired = (token: string | null) => {
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp * 1000 < Date.now();
+    } catch {
+      return true;
+    }
+  };
+
   useEffect(() => {
-    if (user && token) {
+    
+    if (user && token && !isTokenExpired(token)) {
       navigate(user.isAdmin ? ROUTES.ADMIN : ROUTES.DASHBOARD, { replace: true });
     }
   }, [user, token, navigate]);
@@ -81,23 +92,16 @@ export default function AuthPage() {
   };
 
   const LoginForm = () => (
-    <Form
-      layout="vertical"
-      onFinish={handleLogin}
-      size="large"
-    >
+    <Form layout="vertical" onFinish={handleLogin} size="large">
       <Form.Item
         name="email"
         label={t('auth.email')}
         rules={[
           { required: true, message: 'Vui lòng nhập email' },
-          { type: 'email', message: 'Email không hợp lệ' }
+          { type: 'email', message: 'Email không hợp lệ' },
         ]}
       >
-        <Input
-          prefix={<MailOutlined />}
-          placeholder="Nhập email của bạn"
-        />
+        <Input prefix={<MailOutlined />} placeholder="Nhập email của bạn" />
       </Form.Item>
 
       <Form.Item
@@ -105,29 +109,17 @@ export default function AuthPage() {
         label={t('auth.password')}
         rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}
       >
-        <Input.Password
-          prefix={<LockOutlined />}
-          placeholder="Nhập mật khẩu"
-        />
+        <Input.Password prefix={<LockOutlined />} placeholder="Nhập mật khẩu" />
       </Form.Item>
 
       <Form.Item>
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={loading}
-          className="w-full"
-        >
+        <Button type="primary" htmlType="submit" loading={loading} className="w-full">
           {t('auth.login')}
         </Button>
       </Form.Item>
 
       <div className="text-center">
-        <Button 
-          type="link" 
-          className="p-0"
-          onClick={() => navigate(ROUTES.RESET_PASSWORD)}
-        >
+        <Button type="link" className="p-0" onClick={() => navigate(ROUTES.RESET_PASSWORD)}>
           {t('auth.forgotPassword')}
         </Button>
       </div>
@@ -135,20 +127,13 @@ export default function AuthPage() {
   );
 
   const RegisterForm = () => (
-    <Form
-      layout="vertical"
-      onFinish={handleRegister}
-      size="large"
-    >
+    <Form layout="vertical" onFinish={handleRegister} size="large">
       <Form.Item
         name="name"
         label={t('auth.name')}
         rules={[{ required: true, message: 'Vui lòng nhập tên' }]}
       >
-        <Input
-          prefix={<UserOutlined />}
-          placeholder="Nhập tên của bạn"
-        />
+        <Input prefix={<UserOutlined />} placeholder="Nhập tên của bạn" />
       </Form.Item>
 
       <Form.Item
@@ -156,13 +141,10 @@ export default function AuthPage() {
         label={t('auth.email')}
         rules={[
           { required: true, message: 'Vui lòng nhập email' },
-          { type: 'email', message: 'Email không hợp lệ' }
+          { type: 'email', message: 'Email không hợp lệ' },
         ]}
       >
-        <Input
-          prefix={<MailOutlined />}
-          placeholder="Nhập email của bạn"
-        />
+        <Input prefix={<MailOutlined />} placeholder="Nhập email của bạn" />
       </Form.Item>
 
       <Form.Item
@@ -170,10 +152,7 @@ export default function AuthPage() {
         label={t('auth.password')}
         rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}
       >
-        <Input.Password
-          prefix={<LockOutlined />}
-          placeholder="Nhập mật khẩu"
-        />
+        <Input.Password prefix={<LockOutlined />} placeholder="Nhập mật khẩu" />
       </Form.Item>
 
       <Form.Item
@@ -192,19 +171,11 @@ export default function AuthPage() {
           }),
         ]}
       >
-        <Input.Password
-          prefix={<LockOutlined />}
-          placeholder="Xác nhận mật khẩu"
-        />
+        <Input.Password prefix={<LockOutlined />} placeholder="Xác nhận mật khẩu" />
       </Form.Item>
 
       <Form.Item>
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={loading}
-          className="w-full"
-        >
+        <Button type="primary" htmlType="submit" loading={loading} className="w-full">
           {t('auth.register')}
         </Button>
       </Form.Item>
@@ -220,24 +191,14 @@ export default function AuthPage() {
               <Title level={2} className="m-0 text-blue-600">
                 SmartWork AI
               </Title>
-              <Text type="secondary">
-                Ứng dụng quản lý công việc thông minh với AI
-              </Text>
+              <Text type="secondary">Ứng dụng quản lý công việc thông minh với AI</Text>
             </div>
 
             <Tabs
               defaultActiveKey="login"
               items={[
-                {
-                  key: 'login',
-                  label: t('auth.login'),
-                  children: <LoginForm />,
-                },
-                {
-                  key: 'register',
-                  label: t('auth.register'),
-                  children: <RegisterForm />,
-                },
+                { key: 'login', label: t('auth.login'), children: <LoginForm /> },
+                { key: 'register', label: t('auth.register'), children: <RegisterForm /> },
               ]}
             />
           </Card>

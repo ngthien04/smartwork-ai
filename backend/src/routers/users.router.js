@@ -202,7 +202,7 @@ router.get('/me', authMid, handler(async (req, res) => {
 }));
 
 function generateTokenResponse(user) {
-  // user.roles có dạng [{ team, role }]
+  
   const roles = user.roles || [];
   const isAdmin = roles.some((r) => r.role === 'admin');
 
@@ -211,11 +211,11 @@ function generateTokenResponse(user) {
       id: user._id,
       email: user.email,
       name: user.name,
-      isAdmin,        // <-- dùng cho adminMid / mấy router khác
-      roles,          // (optional) nếu FE cần biết role theo team
+      isAdmin,        
+      roles,          
     },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
 
   return {

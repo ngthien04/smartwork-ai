@@ -12,6 +12,13 @@ const NotificationSchema = new Schema(
         "comment_mention",
         "sprint_status",
         "ai_alert",
+
+        "task_comment",
+        "task_updated",
+        "task_status_changed",
+        "subtask_updated",
+        "attachment_added",
+        "attachment_removed",
       ],
       index: true,
     },
@@ -21,7 +28,5 @@ const NotificationSchema = new Schema(
   },
   { timestamps: true }
 );
-
-NotificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
 
 export const NotificationModel = model("notification", NotificationSchema);

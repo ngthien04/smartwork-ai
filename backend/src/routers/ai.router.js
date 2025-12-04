@@ -1,115 +1,211 @@
 import { Router } from 'express';
-import authMid from '../middleware/auth.mid.js';
 import mongoose from 'mongoose';
+import authMid from '../middleware/auth.mid.js';
+import { BAD_REQUEST } from '../constants/httpStatus.js';
 
-import { suggestChecklistAndEstimate } from '../ai/suggestTask.js';
+import { suggestChecklistAndEstimate, detectIntentAndTask } from '../ai/suggestTask.js';
 import { analyzeTaskPriority } from '../ai/analyzePriority.js';
-import { summarizeComments, summarizeActivity } from '../ai/summary.js';
-import { generateTitleFromDescription } from '../ai/generateTitle.js';
-
-import { AIInsightModel, TaskModel, ProjectModel } from '../models/index.js';
+import { AIInsightModel } from '../models/aiInsight.js';
+import { TaskModel } from '../models/task.js';
+import { ProjectModel } from '../models/project.js';
+import { chat as openaiChat } from '../ai/openai.service.js';
+import {UserModel} from '../models/index.js';
 
 const router = Router();
-const handler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const toId = (v) => new mongoose.Types.ObjectId(String(v));
-const isValidId = (id) => mongoose.isValidObjectId(id);
 
-const KIND = {
-  PRIORITY: 'priority_suggestion',
-  RISK: 'risk_warning',
-  TIMELINE: 'timeline_prediction',
-  WORKLOAD: 'workload_balance',
-};
+const handler =
+  (fn) =>
+  (req, res, next) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
 
-// POST /api/ai/suggest-task  body: { title, description, taskId?, saveInsight? }
+
+function escapeRegex(str = '') {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 router.post(
-  '/suggest-task',
+  '/chat',
   authMid,
   handler(async (req, res) => {
-    const { title, description, taskId, saveInsight } = req.body || {};
-    if (!title) return res.status(400).send('Missing title');
+    const { messages, prompt, system } = req.body || {};
 
-    const result = await suggestChecklistAndEstimate({ title, description });
+    let userContent = '';
+    if (Array.isArray(messages) && messages.length) {
+      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+      userContent =
+        lastUser?.content || messages[messages.length - 1].content || '';
+    } else if (prompt) {
+      userContent = String(prompt);
+    }
 
-    if (saveInsight && taskId && isValidId(taskId)) {
-      const t = await TaskModel.findById(taskId).lean();
-      let teamId = t?.team;
-      if (!teamId && t?.project) {
-        const p = await ProjectModel.findById(t.project).lean();
-        teamId = p?.team;
+    if (!userContent.trim()) {
+      return res.status(BAD_REQUEST).send('Missing user message');
+    }
+
+    let intentResult = null;
+    let createdTask = null;
+    let replyText = '';
+
+    try {
+      intentResult = await detectIntentAndTask({ utterance: userContent });
+    } catch (err) {
+      console.error('detectIntentAndTask error:', err);
+      intentResult = null;
+    }
+
+    if (
+      intentResult &&
+      intentResult.intent === 'create_task' &&
+      intentResult.task &&
+      intentResult.task.title
+    ) {
+      const t = intentResult.task;
+
+      const me = await UserModel.findById(req.user.id, { roles: 1 }).lean();
+      let teamId =
+        me?.roles?.length && me.roles[0].team ? me.roles[0].team : null;
+
+      let projectId = null;
+      if (t.projectName) {
+        const safe = String(t.projectName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const cond = { name: new RegExp(safe, 'i') };
+        if (teamId) cond.team = teamId;
+
+        const proj = await ProjectModel.findOne(cond).lean();
+        if (proj) {
+          projectId = proj._id;
+          if (!teamId && proj.team) teamId = proj.team;
+        }
       }
-      if (teamId) {
-        await AIInsightModel.create({
+
+      if (!teamId) {
+        console.warn('Không xác định được teamId, bỏ qua việc tạo task.');
+      } else {
+        const payload = {
           team: teamId,
-          task: toId(taskId),
-          kind: KIND.PRIORITY,
-          message: `Checklist/estimate/priority gợi ý cho task "${title}".`,
-          score: undefined,
+          project: projectId || undefined,
+          title: t.title,
+          description: t.description || '',
+          priority: t.priority || 'normal',
+          status: 'todo',
+        };
+
+        if (t.dueDate) {
+          const d = new Date(t.dueDate);
+          if (!isNaN(d)) {
+            payload.dueDate = d;
+          }
+        }
+
+        createdTask = await TaskModel.create(payload);
+
+        replyText =
+          intentResult.reply ||
+          `Đã tạo task "${payload.title}"${projectId ? ' trong project được chỉ định' : ''}.`;
+      }
+      console.log('intentResult =', intentResult);
+    }
+
+    if (!replyText) {
+      if (intentResult?.reply) {
+        replyText = intentResult.reply;
+      } else {
+        replyText = await openaiChat({
+          system:
+            system ||
+            'You are a helpful assistant inside a task management app. Hãy trả lời ngắn gọn, thân thiện, ưu tiên tiếng Việt nếu người dùng dùng tiếng Việt.',
+          user: userContent,
+          model: 'gpt-4o-mini',
         });
       }
     }
 
-    res.send(result);
-  })
+    res.send({
+      message: replyText,
+      meta: {
+        intent: intentResult?.intent || null,
+        createdTaskId: createdTask?._id || null,
+        taskDraft: intentResult?.task || null,
+      },
+    });
+  }),
 );
 
-// POST /api/ai/analyze-priority  body: { title, description, dueDate?, currentStatus?, taskId?, saveInsight? }
+
 router.post(
-  '/analyze-priority',
+  '/plan',
   authMid,
   handler(async (req, res) => {
-    const { title, description, dueDate, currentStatus, taskId, saveInsight } = req.body || {};
-    if (!title) return res.status(400).send('Missing title');
-
-    const result = await analyzeTaskPriority({ title, description, dueDate, currentStatus });
-
-    if (saveInsight && taskId && isValidId(taskId)) {
-      const t = await TaskModel.findById(taskId).lean();
-      let teamId = t?.team;
-      if (!teamId && t?.project) {
-        const p = await ProjectModel.findById(t.project).lean();
-        teamId = p?.team;
-      }
-      if (teamId) {
-        await AIInsightModel.create({
-          team: teamId,
-          task: toId(taskId),
-          kind: KIND.RISK,
-          message: `Phân tích ưu tiên/rủi ro: priority=${result.priority}, riskScore=${result.riskScore}`,
-          score: result.riskScore ?? undefined,
-        });
-      }
+    const { goal, constraints = {} } = req.body || {};
+    if (!goal || !String(goal).trim()) {
+      return res.status(BAD_REQUEST).send('Thiếu goal để lập kế hoạch');
     }
 
-    res.send(result);
-  })
+    const baseTitle = 'Kế hoạch: ' + String(goal).slice(0, 50);
+
+    const ai = await suggestChecklistAndEstimate({
+      title: baseTitle,
+      description: goal,
+    });
+
+    const tasks = (ai.checklist || []).map((item, idx) => ({
+      title: item.content || `Sub-task #${idx + 1}`,
+      description: ai.notes || goal,
+      priority: ai.priority || 'normal',
+      estimateHours: ai.estimateHours || 2,
+      order: idx,
+    }));
+
+    res.send({ goal, constraints, tasks });
+  }),
 );
 
-// POST /api/ai/summary  body: { comments?, activities? }
 router.post(
-  '/summary',
+  '/tasks/:taskId/priority',
   authMid,
   handler(async (req, res) => {
-    const { comments = [], activities = [] } = req.body || {};
-    const out = {};
-    if (comments.length) out.comments = await summarizeComments(comments);
-    if (activities.length) out.activities = await summarizeActivity(activities);
-    if (!comments.length && !activities.length) return res.status(400).send('Missing comments or activities');
-    res.send(out);
-  })
-);
+    const { taskId } = req.params;
 
-// POST /api/ai/generate-title  body: { description }
-router.post(
-  '/generate-title',
-  authMid,
-  handler(async (req, res) => {
-    const { description } = req.body || {};
-    if (!description) return res.status(400).send('Missing description');
+    if (!mongoose.isValidObjectId(taskId)) {
+      return res.status(BAD_REQUEST).send('TaskId không hợp lệ');
+    }
 
-    const result = await generateTitleFromDescription({ description });
-    res.send(result);
-  })
+    const task = await TaskModel.findById(taskId)
+      .populate('team')
+      .lean();
+
+    if (!task) {
+      return res.status(404).send('Task không tồn tại');
+    }
+
+    const analysis = await analyzeTaskPriority({
+      title: task.title,
+      description: task.description || '',
+      dueDate: task.dueDate,
+      currentStatus: task.status,
+    });
+
+    const messageLines = [
+      `priority = ${analysis.priority}`,
+      `riskScore = ${analysis.riskScore}`,
+      '',
+      'Lý do:',
+      ...(analysis.reasons || []).map((r) => `- ${r}`),
+    ];
+
+    const insight = await AIInsightModel.create({
+      team: task.team,
+      task: task._id,
+      kind: 'priority_suggestion',
+      message: messageLines.join('\n'),
+      score: analysis.riskScore,
+    });
+
+    const plain = insight.toObject();
+    plain.id = plain._id;
+
+    res.send({ analysis, insight: plain });
+  }),
 );
 
 export default router;

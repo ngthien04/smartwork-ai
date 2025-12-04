@@ -19,15 +19,15 @@ export default function AcceptInvitePage() {
   const [inviteInfo, setInviteInfo] = useState<any | null>(null);
   const [accepted, setAccepted] = useState(false);
 
-  // Lấy token từ URL query nếu có (?token=xxx)
+  
   useEffect(() => {
     const urlToken = query.get('token');
     if (urlToken) {
       setToken(urlToken);
-      // Optional: auto fetch info
+      
       fetchInviteInfo(urlToken);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
   const fetchInviteInfo = async (t: string) => {
@@ -60,7 +60,7 @@ export default function AcceptInvitePage() {
       setAccepted(true);
       message.success('Đã tham gia team thành công!');
 
-      // Nếu backend trả về teamId, có thể điều hướng thẳng về team đó
+      
       const teamId = res.data?.team?._id || res.data?.teamId;
       if (teamId) {
         setTimeout(() => navigate(`/teams/${teamId}`), 800);

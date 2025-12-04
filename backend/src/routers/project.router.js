@@ -35,10 +35,10 @@ router.get(
     const { team, q, isArchived, page = 1, limit = 20, sort = '-updatedAt' } = req.query;
     if (!team) return res.status(BAD_REQUEST).send('Missing team');
 
-    const teamDoc = await TeamModel.findById(team);
+    const teamDoc = await TeamModel.findById(team).populate('members.user', 'name email'); 
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    const isMember = teamDoc.members?.some((m) => String(m.user) === String(req.user.id));
+    const isMember = teamDoc.members?.some((m) => String(m.user._id) === String(req.user.id));
     if (!isMember) return res.status(UNAUTHORIZED).send('Bạn không thuộc team này');
 
     const filter = { team: toId(team), isDeleted: { $ne: true } };
@@ -51,14 +51,68 @@ router.get(
     }
 
     const skip = (Number(page) - 1) * Number(limit);
-    const [items, total] = await Promise.all([
-      ProjectModel.find(filter).sort(sort).skip(skip).limit(Number(limit)).lean(),
+
+    const [projects, total] = await Promise.all([
+      ProjectModel.find(filter)
+        .populate('lead', 'name email avatarUrl') 
+        .sort(sort)
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
       ProjectModel.countDocuments(filter),
     ]);
 
-    res.send({ page: Number(page), limit: Number(limit), total, items });
+    
+    const projectIds = projects.map((p) => p._id);
+    const stats = await TaskModel.aggregate([
+      { $match: { project: { $in: projectIds }, isDeleted: { $ne: true } } },
+      {
+        $group: {
+          _id: '$project',
+          totalTasksCount: { $sum: 1 },
+          doneTasksCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] },
+          },
+          openTasksCount: {
+            $sum: { $cond: [{ $ne: ['$status', 'done'] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const statsMap = new Map();
+    for (const s of stats) {
+      statsMap.set(String(s._id), s);
+    }
+
+    
+    const items = projects.map((p) => {
+      const st = statsMap.get(String(p._id)) || {};
+
+      let leadName = p.lead?.name;
+      if (!leadName && teamDoc?.members?.length) {
+        const leader = teamDoc.members.find((m) => m.role === 'leader');
+        leadName = leader?.user?.name || 'Chưa gán';
+      }
+
+      return {
+        ...p,
+        totalTasksCount: st.totalTasksCount || 0,
+        doneTasksCount: st.doneTasksCount || 0,
+        openTasksCount: st.openTasksCount || 0,
+        leadName,
+      };
+    });
+
+    res.send({
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      items,
+    });
   })
 );
+
 
 router.get(
   '/:projectId',
@@ -76,8 +130,8 @@ router.get(
   })
 );
 
-// POST /api/projects   (leader/admin)
-// body: { team, name, key, description?, lead? }
+
+
 router.post(
   '/',
   authMid,
@@ -193,7 +247,7 @@ router.put(
   })
 );
 
-// DELETE /api/projects/:projectId   (leader/admin) — soft delete
+
 router.delete(
   '/:projectId',
   authMid,
@@ -207,10 +261,20 @@ router.delete(
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới xoá project');
     }
 
+    const now = new Date();
+
+    
     proj.isDeleted = true;
-    proj.deletedAt = new Date();
+    proj.deletedAt = now;
     await proj.save();
 
+    
+    await TaskModel.updateMany(
+      { project: proj._id, isDeleted: { $ne: true } },
+      { $set: { isDeleted: true, deletedAt: now } },
+    );
+
+    
     await recordActivity({
       team: proj.team,
       actor: req.user.id,
@@ -221,7 +285,7 @@ router.delete(
     });
 
     res.send();
-  })
+  }),
 );
 
 router.get(

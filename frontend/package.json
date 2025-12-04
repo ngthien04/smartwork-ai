@@ -24,6 +24,7 @@
     "dayjs": "^1.11.18",
     "flowbite": "^3.1.2",
     "flowbite-react": "^0.12.10",
+    "framer-motion": "^12.23.24",
     "i18next": "^25.6.0",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.544.0",

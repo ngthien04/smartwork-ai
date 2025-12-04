@@ -1,4 +1,4 @@
-// src/routers/invite.router.js
+
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
@@ -25,7 +25,7 @@ function isMember(teamDoc, userId) {
   return teamDoc.members?.some((m) => String(m.user) === String(userId));
 }
 
-// 👉 LIST INVITES: GET /api/invites?team=...
+
 router.get(
   '/',
   authMid,
@@ -45,7 +45,7 @@ router.get(
   })
 );
 
-// 👉 GET BY TOKEN: GET /api/invites/token/:token
+
 router.get(
   '/token/:token',
   authMid,
@@ -77,7 +77,7 @@ router.post(
       return res.status(404).send('Team không tồn tại');
     }
 
-    // ✔ CHỈ CẦN LÀ MEMBER (hoặc admin global) LÀ ĐƯỢC MỜI
+    
     const isTeamMember = isMember(teamDoc, req.user.id);
     const isGlobalAdmin = req.user.isAdmin === true;
     if (!isTeamMember && !isGlobalAdmin) {
@@ -109,7 +109,7 @@ router.post(
       metadata: { email: invite.email, role },
     });
 
-    // TODO: nếu muốn thì send email ở đây
+    
 
     res.status(201).send({
       _id: invite._id,
@@ -149,7 +149,7 @@ router.post(
         .send('Email của bạn không khớp email trong lời mời');
     }
 
-    // Thêm vào team.members
+    
     const alreadyMember = team.members?.some(
       (m) => String(m.user) === String(me._id),
     );
@@ -162,7 +162,7 @@ router.post(
       await team.save();
     }
 
-    // Sync user.roles
+    
     const hasRole = me.roles?.some(
       (r) => String(r.team) === String(team._id),
     );
@@ -188,7 +188,7 @@ router.post(
   })
 );
 
-// DELETE /api/invites/:inviteId
+
 router.delete(
   '/:inviteId',
   authMid,
@@ -199,7 +199,7 @@ router.delete(
     if (!invite) return res.status(404).send('Invite không tồn tại');
 
 
-    // Hoặc xóa luôn:
+    
     await invite.deleteOne();
 
     await recordActivity({
