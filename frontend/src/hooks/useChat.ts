@@ -1,91 +1,100 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { message as antdMessage } from 'antd';
+import { chatHistoryServices, type ChatMsg } from '@/services/chatHistoryServices';
 
-import { useState, useRef, useEffect } from 'react';
-import type { KeyboardEvent } from 'react'; 
-import { aiServices } from '@/services/aiServices';
-
-export type ChatMessage = {
-  id: string;
+type UIMessage = {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
 };
 
 export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<UIMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  // nếu sau này bạn muốn tách theo team, set teamId ở đây
+  const teamId = useMemo(() => undefined as string | undefined, []);
+
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    });
   };
+
+  // load history khi mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const history = await chatHistoryServices.getHistory(teamId ? { team: teamId } : undefined);
+        // đảm bảo createdAt luôn có
+        const normalized = history.map((m: ChatMsg) => ({
+          ...m,
+          createdAt: m.createdAt || new Date().toISOString(),
+        }));
+        setMessages(normalized);
+        scrollToBottom();
+      } catch (e: any) {
+        // silent fail cũng được, nhưng báo nhẹ
+        console.error(e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isStreaming]);
-
-  const clearChat = () => {
-    setMessages([]);
-    setInputValue('');
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, isStreaming]);
 
   const handleSend = async () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed || isStreaming) return;
+    const content = inputValue.trim();
+    if (!content || isStreaming) return;
 
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: trimmed,
-      createdAt: new Date().toISOString(),
-    };
-
-    const nextMessages = [...messages, userMsg];
-
-    setMessages(nextMessages);
-    setInputValue('');
     setIsStreaming(true);
 
+    // optimistic
+    const optimistic: UIMessage = {
+      role: 'user',
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setInputValue('');
+
     try {
-      
-      const payload = {
-        messages: nextMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      };
-
-      
-      const replyText = await aiServices.chat(payload);
-
-      const botMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: replyText || '(AI không trả lời gì cả)',
-        createdAt: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [...prev, botMsg]);
-    } catch (err) {
-      console.error('Chat request failed', err);
-      const errMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Xin lỗi, có lỗi khi gọi AI. Vui lòng thử lại sau.',
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      const res = await chatHistoryServices.sendMessage({ content, ...(teamId ? { team: teamId } : {}) });
+      const normalized = (res.messages || []).map((m) => ({
+        ...m,
+        createdAt: m.createdAt || new Date().toISOString(),
+      }));
+      setMessages(normalized);
+    } catch (e: any) {
+      console.error(e);
+      antdMessage.error('Gửi tin nhắn thất bại');
     } finally {
       setIsStreaming(false);
     }
   };
 
-  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyPress: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    // Enter để send, Shift+Enter để xuống dòng
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
+    }
+  };
+
+  const clearChat = async () => {
+    if (isStreaming) return;
+    try {
+      await chatHistoryServices.clearHistory(teamId ? { team: teamId } : undefined);
+      setMessages([]);
+      antdMessage.success('Đã tạo chat mới');
+    } catch (e) {
+      console.error(e);
+      antdMessage.error('Không thể xoá lịch sử chat');
     }
   };
 

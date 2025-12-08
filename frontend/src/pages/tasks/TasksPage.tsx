@@ -30,6 +30,7 @@ import { useNavigate } from 'react-router-dom';
 import Kanban from '@/components/tasks/Kanban';
 import taskServices from '@/services/taskServices';
 import type { Task } from '@/types'; 
+import { aiStatusServices, type AIStatusItem } from '@/services/aiStatusServices';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -71,8 +72,24 @@ export default function TasksPage() {
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AIStatusItem[]>([]);
+  const [aiStatusLoading, setAiStatusLoading] = useState(false);
+  const [aiFilterKey, setAiFilterKey] = useState<AIStatusItem['key'] | null>(null);
 
-  
+
+  const fetchAIStatus = async () => {
+    try {
+      setAiStatusLoading(true);
+      const items = await aiStatusServices.getStatus({ limit: 5 }); // AIStatusItem[]
+      setAiStatus(items);
+    } catch (e) {
+      console.error(e);
+      setAiStatus([{ key: 'ok', text: 'Không tải được AI status.', count: 0 }]);
+    } finally {
+      setAiStatusLoading(false);
+    }
+  };
+
   const fetchTasks = async () => {
     try {
       setLoading(true);
@@ -148,35 +165,41 @@ export default function TasksPage() {
         task.title.toLowerCase().includes(search) ||
         (task.description || '').toLowerCase().includes(search);
 
-      const matchesStatus =
-        filters.status === 'all' || task.status === filters.status;
-
-      const matchesPriority =
-        filters.priority === 'all' || task.priority === filters.priority;
+      const matchesStatus = filters.status === 'all' || task.status === filters.status;
+      const matchesPriority = filters.priority === 'all' || task.priority === filters.priority;
 
       const matchesAssignee =
         filters.assignee === 'all' ||
-        task.assignees?.some(
-          (a) =>
-            String((a as any).id || (a as any)._id || a) === filters.assignee,
-        );
+        task.assignees?.some((a) => String((a as any).id || (a as any)._id || a) === filters.assignee);
 
       const matchesLabel =
         filters.label === 'all' ||
-        (task as any).labels?.some(
-          (lb: any) =>
-            String(lb?.id || lb?._id || lb) === filters.label,
-        );
+        (task as any).labels?.some((lb: any) => String(lb?.id || lb?._id || lb) === filters.label);
 
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesPriority &&
-        matchesAssignee &&
-        matchesLabel
-      );
+      // --- AI filter ---
+      const now = new Date();
+      const due = task.dueDate ? new Date(task.dueDate) : null;
+      const hasAssignee = (task.assignees || []).length > 0;
+
+      let matchesAI = true;
+      if (aiFilterKey === 'overdue') {
+        matchesAI = !!due && !isNaN(due as any) && due < now && task.status !== 'done';
+      } else if (aiFilterKey === 'urgent') {
+        matchesAI = task.priority === 'urgent' && task.status !== 'done';
+      } else if (aiFilterKey === 'blocked') {
+        matchesAI = task.status === 'blocked';
+      } else if (aiFilterKey === 'unassigned') {
+        matchesAI = !hasAssignee && task.status !== 'done';
+      } else if (aiFilterKey === 'overloaded') {
+        // overloaded là insight chung; để không filter sai thì giữ nguyên (hoặc bạn filter in_progress)
+        matchesAI = true;
+      } else if (aiFilterKey === 'ok') {
+        matchesAI = true;
+      }
+
+      return matchesSearch && matchesStatus && matchesPriority && matchesAssignee && matchesLabel && matchesAI;
     });
-  }, [filters, tasks]);
+  }, [filters, tasks, aiFilterKey]);
 
   
   const stats = useMemo(() => {
@@ -365,17 +388,47 @@ export default function TasksPage() {
                 </Select>
               </Space>
             </Card>
-
-            <Card title="AI status" extra={<FilterOutlined />}>
+            <Card
+              title="AI status"
+              extra={
+                <Space>
+                  {aiFilterKey ? (
+                    <Button size="small" onClick={() => setAiFilterKey(null)}>
+                      Clear
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    loading={aiStatusLoading}
+                    onClick={fetchAIStatus}
+                  >
+                    Refresh
+                  </Button>
+                </Space>
+              }
+            >
               <List
-                dataSource={[
-                  'AI đề xuất gom task UI',
-                  'Cần ước lượng lại task',
-                  'Đang thu thập báo cáo',
-                ]}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Text>{item}</Text>
+                dataSource={aiStatus}
+                locale={{ emptyText: 'Chưa có gợi ý nào' }}
+                renderItem={(it) => (
+                  <List.Item
+                    className="cursor-pointer"
+                    onClick={() => {
+                      // click item => set AI filter + set filters hợp lý
+                      setAiFilterKey(it.key);
+
+                      // optional: auto-set filter để user thấy effect rõ
+                      if (it.key === 'urgent') setFilters((p) => ({ ...p, priority: 'urgent', status: 'all' }));
+                      if (it.key === 'blocked') setFilters((p) => ({ ...p, status: 'blocked' as any, priority: 'all' }));
+                      if (it.key === 'overdue') setFilters((p) => ({ ...p, status: 'all', priority: 'all' }));
+                      if (it.key === 'unassigned') setFilters((p) => ({ ...p, assignee: 'all', status: 'all' }));
+                    }}
+                  >
+                    <Space className="w-full justify-between">
+                      <Text strong={aiFilterKey === it.key}>{it.text}</Text>
+                      {aiFilterKey === it.key ? <Tag color="blue">Active</Tag> : null}
+                    </Space>
                   </List.Item>
                 )}
               />
@@ -389,7 +442,7 @@ export default function TasksPage() {
             type="info"
             showIcon
             className="mb-4"
-            message="Task được tạo trong Project Detail. Ở đây chỉ là bảng tổng quan & drag-drop."
+            message="Task được tạo trong Project Detail. Đây là bảng tổng quan & drag-drop."
           />
 
           <Row gutter={[16, 16]}>
