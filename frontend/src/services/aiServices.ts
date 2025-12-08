@@ -32,8 +32,6 @@ export const aiServices = {
     return api.post(`/ai/tasks/${taskId}/priority`);
   },
 
-  
-  
   async chat(payload: any): Promise<string> {
     const res = await api.post('/ai/chat', payload);
     
