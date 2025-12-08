@@ -18,7 +18,7 @@ import dayjs from 'dayjs';
 import taskServices from '@/services/taskServices';
 import { calendarServices } from '@/services/calendarServices';
 import { noteServices } from '@/services/noteServices';
-import inviteService, { type Invite } from '@/services/inviteService';
+import inviteService from '@/services/inviteService';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Space, message } from 'antd';
 import type { Task as ApiTask } from '@/services/taskServices';
@@ -67,6 +67,19 @@ export default function Dashboard() {
   });
 
 
+  // Summary thống kê: total 
+  const { data: tasksSummary } = useQuery({
+    queryKey: ['dashboard', 'tasks-summary'],
+    queryFn: () => taskServices.list({ limit: 1 }),
+  });
+
+  // Số task đã hoàn thành
+  const { data: doneSummary } = useQuery({
+    queryKey: ['dashboard', 'tasks-done-summary'],
+    queryFn: () => taskServices.list({ status: 'done', limit: 1 }),
+  });
+
+  // Danh sách task để hiển thị recent tasks 
   const { data: tasksResponse } = useQuery({
     queryKey: ['dashboard', 'tasks'],
     queryFn: () => taskServices.list({ limit: 20 }),
@@ -100,13 +113,17 @@ const { data: notesRes } = useQuery({
 
 
   const completedTasks = useMemo(() => {
-    const items = tasksResponse?.data?.items ?? [];
-    return items.filter((task) => task.status === 'done').length;
-  }, [tasksResponse]);
+    const totalDone =
+      doneSummary?.data?.total ??
+      doneSummary?.data?.items?.length ??
+      0;
+    return totalDone;
+  }, [doneSummary]);
 
   const totalTasks =
-    tasksResponse?.data?.total ??
-    (tasksResponse?.data?.items?.length ?? 0);
+    tasksSummary?.data?.total ??
+    tasksSummary?.data?.items?.length ??
+    0;
 
 
   const upcomingEvents = useMemo(() => {

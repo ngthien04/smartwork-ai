@@ -389,7 +389,7 @@ export default function TasksPage() {
             type="info"
             showIcon
             className="mb-4"
-            message="Task được tạo trong Project Detail. Ở đây chỉ là bảng tổng quan & drag-drop."
+            message="Task được tạo trong Project Detail. Đây là bảng tổng quan & drag-drop."
           />
 
           <Row gutter={[16, 16]}>
