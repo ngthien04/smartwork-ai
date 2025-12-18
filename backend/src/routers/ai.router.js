@@ -14,6 +14,7 @@ import {
   TeamModel,
 } from '../models/index.js';
 
+import { triageBuglist } from '../ai/triageBugList.js';
 import { chat as openaiChat } from '../ai/openai.service.js';
 import { suggestChecklistAndEstimate } from '../ai/suggestTask.js';
 import { analyzeTaskPriority } from '../ai/analyzePriority.js';
@@ -665,9 +666,7 @@ router.post(
   })
 );
 
-/** =========================
- * POST /ai/tasks/:taskId/priority
- * ========================= */
+// POST /ai/tasks/:taskId/priority
 router.post(
   '/tasks/:taskId/priority',
   authMid,
@@ -685,6 +684,14 @@ router.post(
       currentStatus: task.status,
     });
 
+    const suggestPatch = {};
+    if (analysis?.priority) suggestPatch.priority = analysis.priority;
+
+    const suggestLabelNames = [];
+    if (typeof analysis?.riskScore === 'number' && analysis.riskScore >= 0.75) {
+      suggestLabelNames.push('risk');
+    }
+
     const messageLines = [
       `priority = ${analysis.priority}`,
       `riskScore = ${analysis.riskScore}`,
@@ -699,6 +706,13 @@ router.post(
       kind: 'priority_suggestion',
       message: messageLines.join('\n'),
       score: analysis.riskScore,
+
+      metadata: {
+        suggestPatch,                 // { priority: 'high' ... }
+        suggestLabelNames,            // ['risk'] hoặc []
+        analysis,                     // lưu lại full analysis nếu muốn
+        source: 'analyzeTaskPriority',
+      },
     });
 
     res.send({ analysis, insight: { ...insight.toObject(), id: insight._id } });
@@ -905,9 +919,33 @@ async function buildAutoPatchFromInsight(insight) {
   const { kind, message = '' } = insight;
   const out = {};
 
+  // ưu tiên parse JSON message
+  let parsed = null;
+  try {
+    parsed = JSON.parse(message);
+  } catch {}
+
   if (kind === 'priority_suggestion') {
-    const m = /priority\s*=\s*(low|normal|high|urgent)/i.exec(message);
-    if (m) out.priority = m[1].toLowerCase();
+    // 1) ưu tiên lấy từ parsed.autoApply / parsed.analysis
+    const p =
+      parsed?.autoApply?.priority ||
+      parsed?.analysis?.priority ||
+      null;
+
+    if (p && ['low', 'normal', 'high', 'urgent'].includes(p)) {
+      out.priority = p;
+    }
+
+    // 2) nếu AI gợi ý labelNames (vd risk)
+    if (Array.isArray(parsed?.autoApply?.labelNames) && parsed.autoApply.labelNames.length) {
+      out.labelNames = parsed.autoApply.labelNames;
+    }
+
+    // fallback nếu không parse được json thì mới regex (giữ backward compatible)
+    if (!out.priority) {
+      const m = /priority\s*=\s*(low|normal|high|urgent)/i.exec(message);
+      if (m) out.priority = m[1].toLowerCase();
+    }
   }
 
   if (kind === 'risk_warning') {
@@ -1218,4 +1256,23 @@ router.get(
   })
 );
 
+router.post(
+  '/triage/bugs',
+  authMid,
+  handler(async (req, res) => {
+    const buglist = String(req.body?.buglist || '').trim();
+    if (!buglist) return res.status(BAD_REQUEST).send('Thiếu buglist');
+
+    // optional: context
+    const context = req.body?.context || {};
+
+    const out = await triageBuglist({
+      buglist,
+      context,
+      todayISO: new Date().toISOString().slice(0, 10),
+    });
+
+    res.send(out);
+  })
+);
 export default router;

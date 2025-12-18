@@ -56,3 +56,24 @@ export interface AIPlannerResponse {
   timeline?: string;
 }
 
+// src/types/ai.ts
+export type TriageItem = {
+  title: string;
+  description?: string;
+  severity: 'S1' | 'S2' | 'S3' | 'S4';
+  priority: 'urgent' | 'high' | 'normal' | 'low';
+  order: number;
+  confidence: number; // 0..1
+  rationale: string[];
+  suggestedLabels?: string[];
+};
+
+export type BugTriageResponse = {
+  summary: {
+    total: number;
+    bySeverity: Record<'S1' | 'S2' | 'S3' | 'S4', number>;
+    byPriority: Record<'urgent' | 'high' | 'normal' | 'low', number>;
+    topRisks: string[];
+  };
+  items: TriageItem[];
+};

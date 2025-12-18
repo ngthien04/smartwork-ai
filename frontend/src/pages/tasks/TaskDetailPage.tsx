@@ -90,7 +90,7 @@ export default function TaskDetailPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<any | null>(null);
 
-  
+
   useEffect(() => {
     const fetchData = async () => {
       if (!taskId) return;
@@ -131,7 +131,7 @@ export default function TaskDetailPage() {
     fetchData();
   }, [taskId]);
 
-  
+
   useEffect(() => {
     if (!task || (!task._id && !task.id)) return;
     const id = task.id || task._id;
@@ -184,7 +184,7 @@ export default function TaskDetailPage() {
     loadActivities();
   }, [task]);
 
-  
+
   useEffect(() => {
     if (!task?.id) return;
 
@@ -198,7 +198,7 @@ export default function TaskDetailPage() {
     return () => clearInterval(interval);
   }, [task?.id]);
 
-  
+
   useEffect(() => {
     const loadLabels = async () => {
       if (!project) return;
@@ -225,7 +225,7 @@ export default function TaskDetailPage() {
     loadLabels();
   }, [project]);
 
-  
+
   const taskLabelIds = useMemo(() => {
     const raw = (task as any)?.labels;
 
@@ -255,7 +255,7 @@ export default function TaskDetailPage() {
     return [];
   }, [task?.labels]);
 
-  
+
   const taskLabelObjects: Label[] = useMemo(() => {
     if (!taskLabelIds.length) return [];
     return taskLabelIds
@@ -263,7 +263,7 @@ export default function TaskDetailPage() {
       .filter((x): x is Label => Boolean(x));
   }, [taskLabelIds, labels]);
 
-  
+
   const assignees = useMemo(() => {
     if (!task?.assignees) return [];
     return (task.assignees as any[]).map((u) => ({
@@ -274,7 +274,7 @@ export default function TaskDetailPage() {
     }));
   }, [task?.assignees]);
 
-  
+
   const subtaskProgress = useMemo(() => {
     if (!subtasks.length) return 0;
     const doneCount = subtasks.filter((s) => s.isDone).length;
@@ -289,7 +289,7 @@ export default function TaskDetailPage() {
     setAttachments((t.attachments as TaskAttachment[]) || []);
   };
 
-  
+
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!task?.id && !task?._id) return;
     const id = task.id || task._id;
@@ -321,7 +321,7 @@ export default function TaskDetailPage() {
     return { total, subtaskCount: subtaskIds.size };
   }, [attachments]);
 
-  
+
   const handleToggleSubtask = async (subtask: Subtask) => {
     try {
       const res = await subtaskServices.toggle(subtask._id || subtask.id);
@@ -435,7 +435,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  
+
   const handlePostComment = async () => {
     if (!newComment.trim()) return;
     if (!task?.id && !task?._id) return;
@@ -503,7 +503,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  
+
   const handleSetLabelsForTask = async (nextIds: string[]) => {
     if (!task?.id && !task?._id) return;
     const id = task.id || task._id;
@@ -546,7 +546,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  
+
   const activityItems = useMemo(() => {
     if (!activities.length) return [];
     return activities.map((a) => {
@@ -566,7 +566,7 @@ export default function TaskDetailPage() {
     try {
       setAiLoading(true);
       const res = await aiServices.analyzeTaskPriority(id);
-      setAiResult(res.data); 
+      setAiResult(res.data);
     } catch (e: any) {
       console.error(e);
       message.error(e?.response?.data || 'AI phân tích thất bại');
@@ -575,20 +575,27 @@ export default function TaskDetailPage() {
     }
   };
 
-const handleAcceptInsight = async () => {
-  if (!aiResult?.insight?.id && !aiResult?.insight?._id) return;
-  const insightId = aiResult.insight.id || aiResult.insight._id;
-  try {
-    await aiServices.acceptInsight(insightId, true);
-    message.success('Đã áp dụng đề xuất AI');
-    
-  } catch (e: any) {
-    console.error(e);
-    message.error(e?.response?.data || 'Không áp dụng được đề xuất');
-  }
-};
+  const handleAcceptInsight = async () => {
+    const insightId = aiResult?.insight?.id || aiResult?.insight?._id;
+    if (!insightId) return;
 
-  
+    try {
+      await aiServices.acceptInsight(insightId);
+
+      message.success('Đã áp dụng đề xuất AI');
+
+      const id = task.id || task._id;
+      const res = await taskServices.getById(id);
+      const t: any = res.data || res;
+      t.id = t.id || t._id;
+      setTask(t);
+    } catch (e: any) {
+      console.error(e);
+      message.error(e?.response?.data || 'Không áp dụng được đề xuất');
+    }
+  };
+
+
   if (!loading && !task) {
     return (
       <Result
@@ -612,7 +619,7 @@ const handleAcceptInsight = async () => {
     );
   }
 
-  
+
   return (
     <div className="space-y-4">
       <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
@@ -693,7 +700,7 @@ const handleAcceptInsight = async () => {
                         color={lb.color || 'default'}
                         closable
                         onClose={(e) => {
-                          e.preventDefault(); 
+                          e.preventDefault();
                           handleRemoveLabelFromTask(String(lb._id));
                         }}
                         style={{ borderRadius: 4 }}
@@ -793,7 +800,7 @@ const handleAcceptInsight = async () => {
                 loading={creatingSubtask}
                 onClick={() => handleOpenSubtaskModal()}
               >
-                Thêm subtask mới
+                Thêm công việc mới
               </Button>
             }
           >
@@ -845,9 +852,7 @@ const handleAcceptInsight = async () => {
             </Space>
           </Card>
 
-          {/* MODALS + ATTACHMENTS + ACTIVITIES */}
           <Row gutter={[16, 25]} className="mt-4">
-            {/* LABEL MODAL: tạo/sửa/xoá nhãn (project) */}
             <Modal
               open={labelModalOpen}
               title={editingLabel ? 'Sửa nhãn' : 'Quản lý nhãn'}
@@ -872,7 +877,7 @@ const handleAcceptInsight = async () => {
                   }
 
                   if (editingLabel) {
-                    
+
                     const res = await labelServices.update(editingLabel._id, {
                       name: values.name,
                       color: values.color,
@@ -887,7 +892,7 @@ const handleAcceptInsight = async () => {
                     );
                     message.success('Đã cập nhật nhãn');
                   } else {
-                    
+
                     const res = await labelServices.create({
                       team: teamId,
                       project: project?._id || project?.id,
@@ -987,7 +992,7 @@ const handleAcceptInsight = async () => {
                                   prev.filter((x) => x._id !== lb._id),
                                 );
 
-                                
+
                                 setTask((prev: any) => {
                                   if (!prev?.labels) return prev;
                                   const next = (prev.labels as any[]).filter(
@@ -1208,7 +1213,6 @@ const handleAcceptInsight = async () => {
             </Col>
           </Row>
 
-          {/* COMMENTS */}
           <Card
             title="Bình luận"
             className="mt-4"
@@ -1406,36 +1410,50 @@ const handleAcceptInsight = async () => {
                 >
                   Phân tích với AI
                 </Button>,
-                aiResult?.insight && (
-                  <Button
-                    key="accept"
-                    type="default"
-                    onClick={handleAcceptInsight}
-                  >
-                    Chấp nhận đề xuất
-                  </Button>
-                ),
               ].filter(Boolean)}
             >
               {aiResult ? (
-                <>
-                  <Text strong>Đề xuất priority: {aiResult.analysis?.priority}</Text>
-                  <br />
-                  <Text type="secondary">
-                    Risk score: {aiResult.analysis?.riskScore}
-                  </Text>
-                  <ul className="mt-2 list-disc pl-5">
-                    {(aiResult.analysis?.reasons || []).map((r: string, idx: number) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </>
+                <Space direction="vertical" className="w-full" size={10}>
+                  <div>
+                    <Text strong>Priority đề xuất:</Text>{' '}
+                    <Tag color={aiResult.analysis?.priority === 'urgent' ? 'red' : 'orange'}>
+                      {(aiResult.analysis?.priority || 'normal').toUpperCase()}
+                    </Tag>
+                  </div>
+
+                  <div>
+                    <Text strong>Risk score</Text>
+                    <Progress
+                      percent={Math.round((aiResult.analysis?.riskScore || 0) * 100)}
+                      status="active"
+                    />
+                    <Text type="secondary" className="text-xs">
+                      Confidence: {Math.round((aiResult.analysis?.confidence || 0) * 100)}%
+                    </Text>
+                  </div>
+
+                  <Divider style={{ margin: '8px 0' }} />
+
+                  <div>
+                    <Text strong>Lý do</Text>
+                    <ul className="mt-2 list-disc pl-5">
+                      {(aiResult.analysis?.reasons || []).map((r: string, idx: number) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <Text strong>Gợi ý hành động</Text>
+                    <ul className="mt-2 list-disc pl-5">
+                      {(aiResult.analysis?.recommendedActions || []).map((a: string, idx: number) => (
+                        <li key={idx}>{a}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </Space>
               ) : (
-                <Alert
-                  type="info"
-                  showIcon
-                  message="Bấm 'Phân tích với AI' để xem đề xuất ưu tiên & rủi ro cho task này."
-                />
+                <Alert type="info" showIcon message="Bấm 'Phân tích với AI' để xem đề xuất ưu tiên & rủi ro." />
               )}
             </Card>
 

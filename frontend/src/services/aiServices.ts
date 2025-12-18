@@ -1,4 +1,5 @@
 import api from './api';
+import type { BugTriageResponse } from '@/types/ai';
 
 export type AIPlanPayload = {
   goal: string;
@@ -44,5 +45,9 @@ export const aiServices = {
 
   dismissInsight(id: string) {
     return api.post(`/ai/insights/${id}/dismiss`);
+  },
+
+  triageBugs(payload: { buglist: string; context?: any }) {
+    return api.post('/ai/triage/bugs', payload);
   },
 };

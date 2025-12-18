@@ -11,6 +11,7 @@ import {
   Tag,
   Modal,
   Form,
+  Popconfirm,
 } from 'antd';
 import {
   PlusOutlined,
@@ -28,7 +29,6 @@ import { noteServices } from '@/services/noteServices';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-
 type Note = {
   id: string;
   title: string;
@@ -38,21 +38,22 @@ type Note = {
   updatedAt: string;
 };
 
-
+// ReactMarkdown typing workaround
 const Markdown: React.FC<React.ComponentProps<typeof ReactMarkdown>> =
   ReactMarkdown as any;
 
 export default function NotesPage() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
 
   const [form] = Form.useForm();
-  const queryClient = useQueryClient();
 
-  
+  // ====== Queries ======
   const { data: notesData, isLoading } = useQuery<Note[]>({
     queryKey: ['notes', { q: searchQuery }],
     queryFn: async () => {
@@ -63,7 +64,7 @@ export default function NotesPage() {
 
   const notes: Note[] = notesData || [];
 
-  
+  // ====== Mutations ======
   const createNoteMutation = useMutation({
     mutationFn: noteServices.create,
     onSuccess: () => {
@@ -87,24 +88,17 @@ export default function NotesPage() {
     mutationFn: noteServices.remove,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
+
+      // nếu đang xem note vừa xoá thì clear panel bên phải
+      if (selectedNote) {
+        const stillExists = notes.some((n) => n.id === selectedNote.id);
+        // note: do invalidate chạy async, vẫn clear luôn cho chắc
+        setSelectedNote(stillExists ? selectedNote : null);
+      }
     },
   });
 
-  const summarizeMutation = useMutation({
-    mutationFn: (noteId: string) => noteServices.aiSummarize(noteId),
-    onSuccess: (data) => {
-      Modal.info({
-        title: 'AI Tóm tắt',
-        content: (
-          <div>
-            {(data as any)?.data?.summary || (data as any)?.summary || 'Không có nội dung tóm tắt'}
-          </div>
-        ),
-      });
-    },
-  });
-
-  
+  // ====== Handlers ======
   const handleCreateNote = () => {
     setEditingNote(null);
     form.resetFields();
@@ -121,16 +115,7 @@ export default function NotesPage() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteNote = (noteId: string) => {
-    Modal.confirm({
-      title: 'Xác nhận xóa',
-      content: 'Bạn có chắc chắn muốn xóa ghi chú này?',
-      onOk: () => deleteNoteMutation.mutate(noteId),
-    });
-  };
-
   const handleModalSubmit = (values: any) => {
-    
     const tagsArray: string[] =
       typeof values.tags === 'string'
         ? values.tags
@@ -154,9 +139,6 @@ export default function NotesPage() {
     }
   };
 
-  const handleAiSummarize = (noteId: string) => {
-    summarizeMutation.mutate(noteId);
-  };
 
   return (
     <div className="notes-page">
@@ -211,23 +193,36 @@ export default function NotesPage() {
                         handleEditNote(note);
                       }}
                     />,
-                    <Button
-                      key="delete"
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteNote(note.id);
+                    <Popconfirm
+                      key="delete-pop"
+                      title="Xóa ghi chú"
+                      description="Bạn có chắc chắn muốn xóa ghi chú này?"
+                      okText="Xóa"
+                      cancelText="Hủy"
+                      okButtonProps={{
+                        danger: true,
+                        loading: deleteNoteMutation.isPending,
                       }}
-                    />,
+                      onConfirm={() => deleteNoteMutation.mutate(note.id)}
+                      onPopupClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        key="delete"
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </Popconfirm>,
                   ]}
                 >
                   <List.Item.Meta
                     title={
                       <div className="flex justify-between items-start">
-                        <Text strong className="block">{note.title}</Text>
+                        <Text strong className="block">
+                          {note.title}
+                        </Text>
                         <Text type="secondary" className="text-xs">
                           {new Date(note.updatedAt).toLocaleDateString()}
                         </Text>
@@ -269,18 +264,10 @@ export default function NotesPage() {
                       {selectedNote.title}
                     </Title>
                     <Text type="secondary">
-                      Cập nhật:{' '}
-                      {new Date(selectedNote.updatedAt).toLocaleString()}
+                      Cập nhật: {new Date(selectedNote.updatedAt).toLocaleString()}
                     </Text>
                   </div>
                   <Space>
-                    <Button
-                      icon={<RobotOutlined />}
-                      onClick={() => handleAiSummarize(selectedNote.id)}
-                      loading={summarizeMutation.isPending}
-                    >
-                      AI Tóm tắt
-                    </Button>
                     <Button
                       icon={<EditOutlined />}
                       onClick={() => handleEditNote(selectedNote)}
@@ -289,20 +276,19 @@ export default function NotesPage() {
                     </Button>
                   </Space>
                 </div>
+
                 <div className="border-t pt-4">
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <Markdown remarkPlugins={[remarkGfm]}>
                       {selectedNote.content}
-                    </ReactMarkdown>
+                    </Markdown>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500">
                 <div className="text-center">
-                  <Text type="secondary">
-                    Chọn một ghi chú để xem nội dung
-                  </Text>
+                  <Text type="secondary">Chọn một ghi chú để xem nội dung</Text>
                 </div>
               </div>
             )}
@@ -351,9 +337,7 @@ export default function NotesPage() {
               <Button
                 type="primary"
                 htmlType="submit"
-                loading={
-                  createNoteMutation.isPending || updateNoteMutation.isPending
-                }
+                loading={createNoteMutation.isPending || updateNoteMutation.isPending}
               >
                 {t('common.save')}
               </Button>

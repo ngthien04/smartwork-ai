@@ -475,7 +475,6 @@ export default function TasksPage() {
         </Col>
       </Row>
 
-      {/* Modal xem nhanh task */}
       <Modal
         title="Xem nhanh task"
         open={isDetailModalOpen}
