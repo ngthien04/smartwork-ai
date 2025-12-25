@@ -171,23 +171,46 @@ router.post(
       const payload = ticket.getPayload();
       const { email, name, picture } = payload;
 
+      // Debug: log payload để kiểm tra
+      // console.log('[google-login] Google payload name:', name);
+      // console.log('[google-login] Google payload email:', email);
+
+      // tên được xử lý đúng UTF-8
+      const userName = name ? String(name).trim() : undefined;
+      
+      // console.log('[google-login] Processed userName:', userName);
+
       const emailNorm = String(email).toLowerCase().trim();
       let user = await UserModel.findOne({ email: emailNorm });
+      let isNewUser = false;
 
       if (!user) {
+        // User mới - lần đầu đăng nhập Google
+        isNewUser = true;
         user = await UserModel.create({
-          name,
+          name: userName,
           email: emailNorm,
           passwordHash: undefined, 
           avatarUrl: picture,
           authProviders: [{ provider: 'google', providerId: payload.sub }],
         });
-      } else if (!user.avatarUrl && picture) {
-        user.avatarUrl = picture;
+        console.log('[google-login] Created new user with name:', user.name);
+      } else {
+        // User đã tồn tại - chỉ cập nhật nếu cần
+        if (userName && (!user.name || user.name !== userName)) {
+          user.name = userName;
+          console.log('[google-login] Updated user name to:', user.name);
+        }
+        if (!user.avatarUrl && picture) {
+          user.avatarUrl = picture;
+        }
         await user.save();
+        console.log('[google-login] Existing user name:', user.name);
       }
 
-      return res.send(generateTokenResponse(user));
+      const response = generateTokenResponse(user, isNewUser);
+      console.log('[google-login] Response user name:', response.user.name, 'isNewUser:', isNewUser);
+      return res.json(response);
     } catch (error) {
       console.error('[google-login] verify error:', error?.message || error);
       return res.status(BAD_REQUEST).send('Google login failed');
@@ -201,7 +224,7 @@ router.get('/me', authMid, handler(async (req, res) => {
   return res.send(user);
 }));
 
-function generateTokenResponse(user) {
+function generateTokenResponse(user, isNewUser = false) {
   
   const roles = user.roles || [];
   const isAdmin = roles.some((r) => r.role === 'admin');
@@ -220,6 +243,7 @@ function generateTokenResponse(user) {
 
   return {
     token,
+    isNewUser, // Flag để frontend biết user có phải là user mới không
     user: {
       id: user._id,
       email: user.email,

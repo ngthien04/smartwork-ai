@@ -7,7 +7,13 @@ import { connectMongo, mongoHealth, installMongoShutdownHooks } from './config/d
 
 const app = express();
 
+//  UTF-8 encoding cho JSON responses
 app.use(express.json({ limit: '2mb' }));
+app.use((req, res, next) => {
+  res.charset = 'utf-8';
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
 const origins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
 

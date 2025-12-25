@@ -20,6 +20,7 @@ export interface AuthResponse {
   isAdmin: boolean;
   avatarUrl?: string;
   token: string;
+  isNewUser?: boolean; // Flag để biết user có phải là user mới không
 }
 
 export interface UpdateProfileRequest {
@@ -84,5 +85,23 @@ export const authService = {
   resetPassword: async (resetData: ResetPasswordRequest): Promise<void> => {
     
     throw new Error('API chưa được triển khai');
+  },
+
+  googleLogin: async (credential: string): Promise<AuthResponse> => {
+    const { data } = await fetcher.post<any>('/users/google-login', { credential });
+    // Backend trả về { token, isNewUser, user: {...} }, cần map lại thành AuthResponse format
+    if (data.user) {
+      return {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.name || 'Người dùng',
+        isAdmin: data.user.isAdmin || false,
+        avatarUrl: data.user.avatarUrl,
+        token: data.token,
+        isNewUser: data.isNewUser || false, // Lấy flag isNewUser từ backend
+      };
+    }
+    // Fallback nếu format khác
+    return data;
   },
 };
