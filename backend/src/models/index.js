@@ -14,3 +14,4 @@ export { ReminderModel } from './reminder.js';
 export { IntegrationModel } from './integration.js';
 export { InviteModel } from './invite.js';
 export { WebhookModel } from './webhook.js';
+export {ChatSessionModel} from './chatSession.js';

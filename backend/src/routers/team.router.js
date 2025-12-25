@@ -48,8 +48,6 @@ function canInvite(teamDoc, user) {
   return isLeaderOrAdmin(teamDoc, user);
 }
 
-
-
 router.get(
   '/',
   authMid,
