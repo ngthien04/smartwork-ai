@@ -1,51 +1,51 @@
-import { fetcher } from '@/api/fetcher';
-import type { EventItem, ApiResponse } from '@/types';
+import api from './api';
+
+export type CalendarEvent = {
+  _id: string;
+  title: string;
+  description?: string;
+  location?: string;
+  start: string; // ISO
+  end: string;   // ISO
+  allDay?: boolean;
+  color?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export const calendarServices = {
-  
-  getEvents: async (from: string, to: string): Promise<ApiResponse<EventItem[]>> => {
-    const { data } = await fetcher.get('/events', {
-      params: { from, to }
+  // GET /events?start&end
+  getEvents(startIso: string, endIso: string) {
+    return api.get<CalendarEvent[]>('/events', {
+      params: { start: startIso, end: endIso },
     });
-    return data;
   },
 
-  
-  createEvent: async (eventData: Partial<EventItem>): Promise<ApiResponse<EventItem>> => {
-    const { data } = await fetcher.post('/events', eventData);
-    return data;
+  createEvent(payload: {
+    title: string;
+    start: string;
+    end: string;
+    location?: string;
+    description?: string;
+    allDay?: boolean;
+    color?: string;
+  }) {
+    return api.post<CalendarEvent>('/events', payload);
   },
 
-  
-  updateEvent: async (id: string, eventData: Partial<EventItem>): Promise<ApiResponse<EventItem>> => {
-    const { data } = await fetcher.put(`/events/${id}`, eventData);
-    return data;
+  updateEvent(id: string, payload: Partial<{
+    title: string;
+    start: string;
+    end: string;
+    location: string;
+    description: string;
+    allDay: boolean;
+    color: string;
+  }>) {
+    return api.put<CalendarEvent>(`/events/${id}`, payload);
   },
 
-  
-  removeEvent: async (id: string): Promise<ApiResponse<void>> => {
-    const { data } = await fetcher.delete(`/events/${id}`);
-    return data;
-  },
-
-  
-  aiSuggest: async (payload: {
-    tasks: any[];
-    slots: { start: string; end: string }[];
-  }): Promise<ApiResponse<any[]>> => {
-    const { data } = await fetcher.post('/events/ai-suggest', payload);
-    return data;
-  },
-
-  
-  syncGoogleCalendar: async (): Promise<ApiResponse<void>> => {
-    const { data } = await fetcher.post('/calendar/sync/google');
-    return data;
-  },
-
-  
-  syncMicrosoftCalendar: async (): Promise<ApiResponse<void>> => {
-    const { data } = await fetcher.post('/calendar/sync/microsoft');
-    return data;
+  removeEvent(id: string) {
+    return api.delete(`/events/${id}`);
   },
 };

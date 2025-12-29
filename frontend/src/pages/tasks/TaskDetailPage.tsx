@@ -1036,7 +1036,7 @@ export default function TaskDetailPage() {
 
             {/* SUBTASK MODAL */}
             <Modal
-              title={editingSubtask ? 'Sửa subtask' : 'Tạo subtask mới'}
+              title={editingSubtask ? 'Sửa công việc' : 'Tạo công việc mới'}
               open={subtaskModalOpen}
               onCancel={() => {
                 setSubtaskModalOpen(false);
@@ -1045,12 +1045,12 @@ export default function TaskDetailPage() {
               }}
               onOk={handleSubmitSubtask}
               confirmLoading={creatingSubtask}
-              okText={editingSubtask ? 'Lưu thay đổi' : 'Tạo subtask'}
+              okText={editingSubtask ? 'Lưu thay đổi' : 'Tạo công việc'}
             >
               <Form form={subtaskForm} layout="vertical">
                 <Form.Item
                   name="title"
-                  label="Tiêu đề subtask"
+                  label="Tiêu đề công việc"
                   rules={[{ required: true, message: 'Vui lòng nhập tiêu đề' }]}
                 >
                   <Input placeholder="VD: Thiết kế UI phần header" />
@@ -1067,7 +1067,7 @@ export default function TaskDetailPage() {
                   />
                 </Form.Item>
 
-                <Form.Item label="File đính kèm (tuỳ chọn)">
+                <Form.Item label="File đính kèm">
                   <Upload
                     beforeUpload={(file) => {
                       setSubtaskFile(file);

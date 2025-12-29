@@ -17,7 +17,7 @@ import activityRouter from './activity.router.js';
 import aiRouter from './ai.router.js';
 import notificationRouter from './notification.router.js';
 import noteRouter from './notes.router.js';
-import eventsRouter from './events.router.js';
+import eventsRouter from './event.router.js';
 
 
 const api = Router();

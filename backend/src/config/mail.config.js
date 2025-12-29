@@ -1,9 +1,12 @@
-import Mailjet from 'node-mailjet';
+import mailjet from 'node-mailjet';
 
 export function getClient() {
-  const mailjet = Mailjet.apiConnect(
-    process.env.MAILJET_API_KEY, 
-    process.env.MAILJET_API_SECRET  
-  );
-  return mailjet;
+  const apiKey = process.env.MAILJET_API_KEY;
+  const apiSecret = process.env.MAILJET_API_SECRET;
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('Missing MAILJET_API_KEY / MAILJET_API_SECRET');
+  }
+
+  return mailjet.apiConnect(apiKey, apiSecret);
 }

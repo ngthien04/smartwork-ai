@@ -192,7 +192,7 @@ export function sendTaskAssignedEmail({ to, taskTitle, taskUrl = '#', projectKey
 
 function defaultFrom() {
   return {
-    Email: process.env.MAIL_FROM_EMAIL || 'no-reply@smartwork.local',
+    Email: process.env.MAIL_FROM_EMAIL || 'smartwork.noreply@gmail.com',
     Name: process.env.MAIL_FROM_NAME || 'SmartWork',
   };
 }
@@ -204,4 +204,104 @@ function escapeHtml(str = '') {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+export function sendTeamInviteEmail({
+  to,
+  inviterName = '',
+  teamName = '',
+  role = 'member',
+  acceptUrl,
+  declineUrl,
+  from = defaultFrom(),
+  templateId,
+}) {
+  if (!acceptUrl || !declineUrl) {
+    throw new Error('sendTeamInviteEmail: missing urls');
+  }
+
+  if (templateId) {
+    return sendEmail({
+      from,
+      to,
+      templateId,
+      variables: { inviterName, teamName, role, acceptUrl, declineUrl },
+    });
+  }
+
+  const subject = `Bạn được mời tham gia team "${teamName}" trên SmartWork`;
+
+  const html = `
+  <div style="background:#f3f4f6;padding:24px 0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+    <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">
+
+      <!-- Header -->
+      <div style="padding:20px 24px;border-bottom:1px solid #e5e7eb">
+        <h1 style="margin:0;font-size:20px;color:#111827">
+          📩 Lời mời tham gia team
+        </h1>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:24px;color:#374151;line-height:1.6">
+        <p style="margin-top:0">
+          Xin chào,
+        </p>
+
+        <p>
+          <strong>${escapeHtml(inviterName) || 'Một thành viên'}</strong>
+          đã mời bạn tham gia team
+          <strong>${escapeHtml(teamName)}</strong>
+          trên <strong>SmartWork</strong>.
+        </p>
+
+        <p>
+          Vai trò được đề xuất cho bạn:
+          <strong>${escapeHtml(role)}</strong>
+        </p>
+
+        <div style="margin:28px 0;text-align:center">
+          <a href="${encodeURI(acceptUrl)}"
+             style="display:inline-block;padding:12px 20px;margin-right:12px;
+                    border-radius:8px;background:#22c55e;color:#ffffff;
+                    text-decoration:none;font-weight:600">
+                Chấp nhận lời mời
+          </a>
+
+          <a href="${encodeURI(declineUrl)}"
+             style="display:inline-block;padding:12px 20px;
+                    border-radius:8px;background:#ef4444;color:#ffffff;
+                    text-decoration:none;font-weight:600">
+                Từ chối
+          </a>
+        </div>
+
+        <p style="font-size:14px;color:#6b7280">
+          Nếu bạn không mong đợi lời mời này, bạn có thể bỏ qua email này một cách an toàn.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;
+                  font-size:12px;color:#6b7280;text-align:center">
+        © ${new Date().getFullYear()} SmartWork • Work smarter with AI
+      </div>
+
+    </div>
+  </div>
+  `;
+
+  const text = `
+Bạn được mời tham gia team "${teamName}" trên SmartWork.
+
+Người mời: ${inviterName || 'Một thành viên'}
+Vai trò: ${role}
+
+Chấp nhận: ${acceptUrl}
+Từ chối: ${declineUrl}
+
+Nếu bạn không mong đợi email này, hãy bỏ qua.
+  `.trim();
+
+  return sendEmail({ from, to, subject, html, text });
 }

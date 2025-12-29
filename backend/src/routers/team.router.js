@@ -14,6 +14,11 @@ import { TaskModel } from '../models/task.js';
 
 
 import { sendWelcomeEmail } from '../helpers/mail.helper.js';
+import crypto from 'crypto';
+
+function makeToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
 
 
 const router = Router();
@@ -395,113 +400,6 @@ router.delete(
     res.send({ ok: true });
   })
 );
-
-
-
-router.post(
-  '/:teamId/invites',
-  authMid,
-  handler(async (req, res) => {
-    const { teamId } = req.params;
-    const { email, role = 'member', expiresInDays = 7 } = req.body || {};
-    if (!email) return res.status(BAD_REQUEST).send('Thiếu email');
-
-    const team = await TeamModel.findById(teamId);
-    if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-
-    
-    if (!canInvite(team, req.user)) {
-      return res
-        .status(UNAUTHORIZED)
-        .send('Bạn phải là thành viên team mới được mời người khác');
-    }
-
-    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const expiresAt = new Date(Date.now() + Number(expiresInDays) * 24 * 3600 * 1000);
-
-    const invite = await InviteModel.create({
-      team: team._id,
-      email: String(email).toLowerCase().trim(),
-      role,
-      token,
-      expiresAt,
-    });
-
-    await recordActivity({
-      team: team._id,
-      actor: req.user.id,
-      verb: 'invite_created',
-      targetType: 'team',
-      targetId: team._id,
-      metadata: { email: invite.email, role },
-    });
-
-    res.status(201).send({ token, expiresAt });
-  })
-);
-
-router.post(
-  '/invites/accept',
-  authMid,
-  handler(async (req, res) => {
-    const { token } = req.body || {};
-    if (!token) return res.status(BAD_REQUEST).send('Thiếu token');
-
-    const invite = await InviteModel.findOne({ token });
-    if (!invite) return res.status(404).send('Invite không hợp lệ');
-    if (invite.expiresAt < new Date()) return res.status(BAD_REQUEST).send('Invite đã hết hạn');
-
-    const team = await TeamModel.findById(invite.team);
-    if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
-
-    const me = await UserModel.findById(req.user.id);
-    if (!me) return res.status(404).send('User không tồn tại');
-
-    if (String(me.email).toLowerCase().trim() !== String(invite.email).toLowerCase().trim()) {
-      return res.status(BAD_REQUEST).send('Email của bạn không khớp email lời mời');
-    }
-
-    const exists = team.members?.some((m) => String(m.user) === String(me._id));
-    if (!exists) {
-      team.members.push({ user: me._id, role: invite.role, joinedAt: new Date() });
-      await team.save();
-    } else {
-      await TeamModel.updateOne(
-        { _id: team._id, 'members.user': me._id },
-        { $set: { 'members.$.role': invite.role } }
-      );
-    }
-
-    const hasRole = me.roles?.some((r) => String(r.team) === String(team._id));
-    if (!hasRole) {
-      me.roles = [...(me.roles || []), { team: team._id, role: invite.role }];
-      await me.save();
-    } else {
-      await UserModel.updateOne(
-        { _id: me._id, 'roles.team': team._id },
-        { $set: { 'roles.$.role': invite.role } }
-      );
-    }
-
-    invite.acceptedBy = me._id;
-    invite.acceptedAt = new Date();
-    await invite.save();
-
-    await recordActivity({
-      team: team._id,
-      actor: req.user.id,
-      verb: 'invite_accepted',
-      targetType: 'team',
-      targetId: team._id,
-      metadata: { userId: me._id, role: invite.role },
-    });
-
-    await sendWelcomeEmail({ to: me.email, name: me.name });
-
-    res.send({ ok: true });
-  })
-);
-
 
 router.get('/slug/:slug', authMid, async (req, res) => {
   const { slug } = req.params;

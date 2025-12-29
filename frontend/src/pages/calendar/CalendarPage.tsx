@@ -1,341 +1,402 @@
-
 import { useMemo, useState } from 'react';
-import { Row, Col, Card, Button, Calendar, Modal, Form, Input, DatePicker, Space, Typography, List, message } from 'antd';
-import { PlusOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import {
+  Row,
+  Col,
+  Card,
+  Button,
+  Calendar,
+  Modal,
+  Form,
+  Input,
+  DatePicker,
+  Space,
+  Typography,
+  List,
+  message,
+  Tag,
+  Popconfirm,
+  Tooltip,
+} from 'antd';
+import { ClockCircleOutlined, EnvironmentOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { calendarServices } from '@/services/calendarServices';
 import dayjs from 'dayjs';
-import taskServices, { type Task as ApiTask } from '@/services/taskServices';
+
+import { calendarServices, type CalendarEvent } from '@/services/calendarServices';
 
 const { Title, Text } = Typography;
+
+type EventFormValues = {
+  title: string;
+  start: dayjs.Dayjs;
+  end: dayjs.Dayjs;
+  location?: string;
+  description?: string;
+};
+
+function monthRange(d: dayjs.Dayjs) {
+  const start = d.startOf('month').startOf('week');
+  const end = d.endOf('month').endOf('week');
+  return { start, end };
+}
+
 export default function CalendarPage() {
   const { t } = useTranslation();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState(dayjs());
-  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
-
   const queryClient = useQueryClient();
 
-  
-  const { data: eventsData } = useQuery({
-    queryKey: ['events', selectedDate.format('YYYY-MM')],
-    queryFn: () => {
-      const start = selectedDate.startOf('month').toISOString();
-      const end = selectedDate.endOf('month').toISOString();
-      return calendarServices.getEvents(start, end);
+  const [panelDate, setPanelDate] = useState(dayjs());
+  const [selectedDate, setSelectedDate] = useState(dayjs());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+
+  const { start, end } = useMemo(() => monthRange(panelDate), [panelDate]);
+
+  // -------------------------
+  // Query
+  // -------------------------
+  const eventsQuery = useQuery({
+    queryKey: ['events', start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')],
+    queryFn: async () => {
+      const res = await calendarServices.getEvents(start.toISOString(), end.toISOString());
+      return res.data || [];
     },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: 1,
   });
 
-  const events = eventsData?.data || [];
+  const events = eventsQuery.data || [];
+  const loading = eventsQuery.isLoading;
 
-  
+  // -------------------------
+  // Mutations
+  // -------------------------
   const createEventMutation = useMutation({
     mutationFn: calendarServices.createEvent,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['events'] });
+    onSuccess: async () => {
+      message.success('Đã tạo sự kiện');
       setIsModalOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+    onError: (err: any) => message.error(err?.response?.data || 'Tạo sự kiện thất bại'),
   });
 
-  
   const updateEventMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => 
-      calendarServices.updateEvent(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['events'] });
+    mutationFn: ({ id, data }: { id: string; data: any }) => calendarServices.updateEvent(id, data),
+    onSuccess: async () => {
+      message.success('Đã cập nhật sự kiện');
+      setIsModalOpen(false);
+      setEditingEvent(null);
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+    onError: (err: any) => message.error(err?.response?.data || 'Cập nhật thất bại'),
   });
 
-  
   const deleteEventMutation = useMutation({
-    mutationFn: calendarServices.removeEvent,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['events'] });
+    mutationFn: (id: string) => calendarServices.removeEvent(id),
+    onSuccess: async () => {
+      message.success('Đã xoá sự kiện');
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
     },
+    onError: (err: any) => message.error(err?.response?.data || 'Xoá thất bại'),
   });
 
-  
-  const aiSuggestMutation = useMutation({
-    mutationFn: calendarServices.aiSuggest,
-    onSuccess: (data) => {
-      setAiSuggestions(data.data);
-    },
-  });
-
-  const { data: taskListResponse } = useQuery({
-    queryKey: ['calendar', 'tasks'],
-    queryFn: () => taskServices.list({ limit: 20 }),
-  });
-
-const pendingTasks = useMemo<ApiTask[]>(() => {
-  const items = taskListResponse?.data?.items ?? [];
-  return items.filter((task: ApiTask) => task.status !== 'done');
-}, [taskListResponse]);
-
-  const handleCreateEvent = () => {
+  // -------------------------
+  // Helpers
+  // -------------------------
+  const closeModal = () => {
+    setIsModalOpen(false);
     setEditingEvent(null);
+  };
+
+  const openCreateModal = (prefillDate?: dayjs.Dayjs) => {
+    setEditingEvent(null);
+    if (prefillDate) setSelectedDate(prefillDate);
     setIsModalOpen(true);
   };
 
-  const handleEditEvent = (event: any) => {
-    setEditingEvent(event);
+  const openEditModal = (ev: CalendarEvent) => {
+    setEditingEvent(ev);
     setIsModalOpen(true);
   };
 
-  const handleDeleteEvent = (eventId: string) => {
-    Modal.confirm({
-      title: 'Xác nhận xóa',
-      content: 'Bạn có chắc chắn muốn xóa sự kiện này?',
-      onOk: () => deleteEventMutation.mutate(eventId),
-    });
+  const getEventsForCell = (date: dayjs.Dayjs) => {
+    return events
+      .filter((ev) => dayjs(ev.start).isSame(date, 'day'))
+      .sort((a, b) => dayjs(a.start).valueOf() - dayjs(b.start).valueOf());
   };
 
-  const handleModalSubmit = (values: any) => {
-    const eventData = {
-      ...values,
-      start: values.start.toISOString(),
-      end: values.end.toISOString(),
-    };
+  const eventsForDate = useMemo(() => {
+    return events
+      .filter((ev) => dayjs(ev.start).isSame(selectedDate, 'day'))
+      .sort((a, b) => dayjs(a.start).valueOf() - dayjs(b.start).valueOf());
+  }, [events, selectedDate]);
 
-    if (editingEvent) {
-      updateEventMutation.mutate({ id: editingEvent.id, data: eventData });
-    } else {
-      createEventMutation.mutate(eventData);
-    }
-  };
-
-  const handleAiSuggest = () => {
-    if (pendingTasks.length === 0) {
-      message.info('Không có công việc nào cần đề xuất lịch trình.');
+  const onSubmit = (values: EventFormValues) => {
+    if (values.start.isSame(values.end) || values.start.isAfter(values.end)) {
+      message.warning('Thời gian kết thúc phải lớn hơn thời gian bắt đầu');
       return;
     }
 
-    const workingSlots = Array.from({ length: 5 }).map((_, index) => ({
-      start: dayjs().add(index + 1, 'day').hour(9).minute(0).second(0).millisecond(0).toISOString(),
-      end: dayjs().add(index + 1, 'day').hour(17).minute(0).second(0).millisecond(0).toISOString(),
-    }));
+    const payload = {
+      title: values.title,
+      start: values.start.toISOString(),
+      end: values.end.toISOString(),
+      location: values.location || '',
+      description: values.description || '',
+    };
 
-    aiSuggestMutation.mutate({
-      tasks: pendingTasks.map((task) => ({
-        id: task._id,
-        title: task.title,
-        estimatedTime: task.estimate || task.storyPoints || 1,
-        priority: task.priority,
-      })),
-      slots: workingSlots,
-    });
+    if (editingEvent?._id) {
+      updateEventMutation.mutate({ id: editingEvent._id, data: payload });
+    } else {
+      createEventMutation.mutate(payload);
+    }
   };
 
-  const getEventsForDate = (date: dayjs.Dayjs) => {
-    return events.filter(event => 
-      dayjs(event.start).isSame(date, 'day')
-    );
-  };
-
+  // -------------------------
+  // Cell render
+  // -------------------------
   const dateCellRender = (date: dayjs.Dayjs) => {
-    const dayEvents = getEventsForDate(date);
-    
+    const dayEvents = getEventsForCell(date);
+    if (!dayEvents.length) return null;
+
     return (
-      <div className="calendar-events">
-        {dayEvents.map(event => (
-          <div
-            key={event.id}
-            className="text-xs bg-blue-100 text-blue-800 p-1 mb-1 rounded cursor-pointer"
-            onClick={() => handleEditEvent(event)}
-          >
-            {event.title}
-          </div>
+      <div style={{ marginTop: 6 }}>
+        {dayEvents.slice(0, 3).map((ev) => (
+          <Tooltip key={ev._id} title={ev.title}>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                openEditModal(ev);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                fontSize: 12,
+                padding: '2px 6px',
+                borderRadius: 8,
+                background: '#f5f5f5',
+                marginBottom: 4,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: ev.color || '#1677ff',
+                  display: 'inline-block',
+                  flex: '0 0 auto',
+                }}
+              />
+              <span
+                style={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {ev.title}
+              </span>
+            </div>
+          </Tooltip>
         ))}
+        {dayEvents.length > 3 ? (
+          <div style={{ fontSize: 12, color: '#999', paddingLeft: 6 }}>
+            +{dayEvents.length - 3} more
+          </div>
+        ) : null}
       </div>
     );
   };
 
   return (
-    <div className="calendar-page">
-      <div className="mb-6">
-        <Title level={2} className="m-0">{t('calendar.title')}</Title>
+    <div className="calendar-page space-y-4">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div>
+          <Title level={2} className="m-0">
+            {t('calendar.title') || 'Calendar'}
+          </Title>
+          <Text type="secondary">Click vào ô ngày để tạo sự kiện • Click vào sự kiện để sửa</Text>
+        </div>
+
+        <Space>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['events'] })}
+            loading={loading}
+          >
+            Reload
+          </Button>
+        </Space>
       </div>
 
-      <Row gutter={[24, 24]}>
-        {/* Calendar */}
+      <Row gutter={[16, 16]}>
+        {/* Main Calendar */}
         <Col xs={24} lg={16}>
-          <Card className="h-full">
-            <div className="mb-4 flex justify-between items-center">
-              <Space>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={handleCreateEvent}
-                >
-                  {t('calendar.createEvent')}
-                </Button>
-                <Button
-                  icon={<CalendarOutlined />}
-                  onClick={handleAiSuggest}
-                  loading={aiSuggestMutation.isPending}
-                >
-                  {t('calendar.aiSuggestSchedule')}
-                </Button>
-              </Space>
-            </div>
-
+          <Card loading={loading}>
             <Calendar
               value={selectedDate}
-              onChange={setSelectedDate}
-              cellRender={dateCellRender}
-              className="h-full"
+              onSelect={(d: any, info: any) => {
+                setSelectedDate(d);
+                if (info?.source === 'date' && !isModalOpen) openCreateModal(d);
+              }}
+              onPanelChange={(d) => setPanelDate(d)}
+              cellRender={dateCellRender as any}
             />
           </Card>
         </Col>
 
-        {/* AI Suggestions & Events List */}
+        {/* Right sidebar: selected day events (CHỈ HIỂN THỊ) */}
         <Col xs={24} lg={8}>
-          <Space direction="vertical" className="w-full" size="large">
-            {/* AI Suggestions */}
-            {aiSuggestions.length > 0 && (
-              <Card title="Đề xuất từ AI" className="w-full">
-                <List
-                  dataSource={aiSuggestions}
-                  renderItem={(suggestion) => (
-                    <List.Item
-                      actions={[
-                        <Button size="small" type="primary">
-                          Chấp nhận
-                        </Button>
-                      ]}
-                    >
-                      <List.Item.Meta
-                        title={suggestion.taskTitle}
-                        description={
-                          <Space>
-                            <ClockCircleOutlined />
-                            <Text type="secondary">
-                              {dayjs(suggestion.suggestedTime.start).format('HH:mm')} - 
-                              {dayjs(suggestion.suggestedTime.end).format('HH:mm')}
-                            </Text>
-                          </Space>
-                        }
-                      />
-                    </List.Item>
-                  )}
-                />
-              </Card>
-            )}
-
-            {/* Today's Events */}
-            <Card title="Sự kiện hôm nay" className="w-full">
+          <Card
+            title={
+              <Space>
+                <span>Sự kiện</span>
+                <Tag>{selectedDate.format('DD/MM/YYYY')}</Tag>
+              </Space>
+            }
+          >
+            {eventsForDate.length === 0 ? (
+              <Text type="secondary">Chưa có sự kiện trong ngày này.</Text>
+            ) : (
               <List
-                dataSource={getEventsForDate(dayjs())}
-                renderItem={(event) => (
+                dataSource={eventsForDate}
+                renderItem={(ev) => (
                   <List.Item
                     actions={[
-                      <Button
-                        size="small"
-                        onClick={() => handleEditEvent(event)}
-                      >
+                      <Button key="edit" size="small" onClick={() => openEditModal(ev)}>
                         Sửa
                       </Button>,
-                      <Button
-                        size="small"
-                        danger
-                        onClick={() => handleDeleteEvent(event.id)}
+                      <Popconfirm
+                        key="del"
+                        title="Xóa sự kiện?"
+                        description="Bạn có chắc muốn xóa sự kiện này không?"
+                        okText="Xóa"
+                        cancelText="Hủy"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => deleteEventMutation.mutate(ev._id)}
                       >
-                        Xóa
-                      </Button>,
+                        <Button size="small" danger loading={deleteEventMutation.isPending}>
+                          Xóa
+                        </Button>
+                      </Popconfirm>,
                     ]}
                   >
                     <List.Item.Meta
-                      title={event.title}
-                      description={
+                      title={
                         <Space>
-                          <ClockCircleOutlined />
-                          <Text type="secondary">
-                            {dayjs(event.start).format('HH:mm')} - 
-                            {dayjs(event.end).format('HH:mm')}
-                          </Text>
-                          {event.location && (
-                            <>
-                              <Text type="secondary">•</Text>
-                              <Text type="secondary">{event.location}</Text>
-                            </>
-                          )}
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: 999,
+                              background: ev.color || '#1677ff',
+                              display: 'inline-block',
+                            }}
+                          />
+                          <span style={{ fontWeight: 600 }}>{ev.title}</span>
+                        </Space>
+                      }
+                      description={
+                        <Space direction="vertical" size={2}>
+                          <Space>
+                            <ClockCircleOutlined />
+                            <Text type="secondary">
+                              {dayjs(ev.start).format('HH:mm')} - {dayjs(ev.end).format('HH:mm')}
+                            </Text>
+                          </Space>
+
+                          {ev.location ? (
+                            <Space>
+                              <EnvironmentOutlined />
+                              <Text type="secondary">{ev.location}</Text>
+                            </Space>
+                          ) : null}
+
+                          {ev.description ? (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {ev.description}
+                            </Text>
+                          ) : null}
                         </Space>
                       }
                     />
                   </List.Item>
                 )}
               />
-            </Card>
-          </Space>
+            )}
+          </Card>
         </Col>
       </Row>
 
-      {/* Event Modal */}
+      {/* Modal Create/Edit */}
       <Modal
-        title={editingEvent ? 'Sửa sự kiện' : t('calendar.createEvent')}
         open={isModalOpen}
-        onCancel={() => setIsModalOpen(false)}
+        title={editingEvent ? 'Sửa sự kiện' : 'Tạo sự kiện'}
+        onCancel={closeModal}
         footer={null}
-        width={600}
+        width={640}
+        destroyOnClose
       >
-        <Form
+        <Form<EventFormValues>
           layout="vertical"
-          onFinish={handleModalSubmit}
-          initialValues={editingEvent ? {
-            ...editingEvent,
-            start: dayjs(editingEvent.start),
-            end: dayjs(editingEvent.end),
-          } : {}}
+          onFinish={onSubmit}
+          initialValues={
+            editingEvent
+              ? {
+                  title: editingEvent.title,
+                  location: editingEvent.location,
+                  description: editingEvent.description,
+                  start: dayjs(editingEvent.start),
+                  end: dayjs(editingEvent.end),
+                }
+              : {
+                  title: '',
+                  location: '',
+                  description: '',
+                  start: selectedDate.hour(9).minute(0).second(0),
+                  end: selectedDate.hour(10).minute(0).second(0),
+                }
+          }
         >
-          <Form.Item
-            name="title"
-            label={t('calendar.eventTitle')}
-            rules={[{ required: true, message: 'Vui lòng nhập tiêu đề' }]}
-          >
-            <Input placeholder="Nhập tiêu đề sự kiện..." />
+          <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: 'Nhập tiêu đề' }]}>
+            <Input placeholder="Ví dụ: Daily standup" />
           </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="start"
-                label={t('calendar.eventStart')}
-                rules={[{ required: true, message: 'Vui lòng chọn thời gian bắt đầu' }]}
-              >
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item name="start" label="Bắt đầu" rules={[{ required: true, message: 'Chọn thời gian bắt đầu' }]}>
                 <DatePicker showTime className="w-full" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item
-                name="end"
-                label={t('calendar.eventEnd')}
-                rules={[{ required: true, message: 'Vui lòng chọn thời gian kết thúc' }]}
-              >
+            <Col xs={24} md={12}>
+              <Form.Item name="end" label="Kết thúc" rules={[{ required: true, message: 'Chọn thời gian kết thúc' }]}>
                 <DatePicker showTime className="w-full" />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item
-            name="location"
-            label={t('calendar.eventLocation')}
-          >
-            <Input placeholder="Nhập địa điểm..." />
+          <Form.Item name="location" label="Địa điểm">
+            <Input placeholder="Ví dụ: Zoom / Phòng họp A" />
+          </Form.Item>
+
+          <Form.Item name="description" label="Mô tả">
+            <Input.TextArea rows={3} placeholder="Ghi chú thêm..." />
           </Form.Item>
 
           <Form.Item className="mb-0">
             <Space className="w-full justify-end">
-              <Button onClick={() => setIsModalOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button 
-                type="primary" 
+              <Button onClick={closeModal}>Hủy</Button>
+              <Button
+                type="primary"
                 htmlType="submit"
                 loading={createEventMutation.isPending || updateEventMutation.isPending}
               >
-                {t('common.save')}
+                Lưu
               </Button>
             </Space>
           </Form.Item>
