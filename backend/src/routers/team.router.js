@@ -270,8 +270,14 @@ router.get(
 
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
 
-    const isMember = team.members?.some((m) => String(m.user._id || m.user) === String(req.user.id));
-    if (!isMember) return res.status(UNAUTHORIZED).send('Bạn không thuộc team này');
+    const isMember = team.members?.some(
+      (m) => String(m.user._id || m.user) === String(req.user.id)
+    );
+    const isGlobalAdmin = req.user.isAdmin === true;
+
+    if (!isMember && !isGlobalAdmin) {
+      return res.status(UNAUTHORIZED).send('Bạn không thuộc team này');
+    }
 
     res.send(team.members);
   })

@@ -121,3 +121,96 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* App layout theming for light/dark using CSS variables */
+.app-shell {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.app-sidebar {
+  background-color: var(--sidebar);
+  color: var(--sidebar-foreground);
+  border-color: var(--sidebar-border);
+}
+
+.app-header {
+  background-color: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+/* Ant Design global theming so ALL pages follow dashboard style */
+.ant-card {
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border-color: var(--border);
+}
+
+.ant-card-head {
+  background-color: var(--card);
+  border-color: var(--border);
+}
+
+.ant-tabs-nav {
+  background-color: var(--card);
+  border-bottom-color: var(--border);
+}
+
+.ant-table {
+  background-color: var(--card);
+}
+
+.ant-table-thead > tr > th {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.ant-table-tbody > tr > td {
+  background-color: var(--card);
+}
+
+.ant-modal-content {
+  background-color: var(--card);
+  color: var(--card-foreground);
+}
+
+.ant-input,
+.ant-select-selector,
+.ant-picker,
+.ant-input-affix-wrapper {
+  background-color: var(--input);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.ant-input::placeholder,
+.ant-select-selection-placeholder,
+.ant-input-affix-wrapper .ant-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* Global dark-mode overrides for common Tailwind utility classes */
+.dark .bg-white {
+  background-color: var(--card) !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: var(--background) !important;
+}
+
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: var(--foreground) !important;
+}
+
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-muted-foreground {
+  color: var(--muted-foreground) !important;
+}
+
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: var(--border) !important;
+}

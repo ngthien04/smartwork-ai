@@ -23,6 +23,31 @@ export interface AuthResponse {
   isNewUser?: boolean; // Flag để biết user có phải là user mới không
 }
 
+// Chuẩn hoá response từ backend 
+const mapBackendAuthResponse = (data: any): AuthResponse => {
+  if (!data || !data.user) {
+    return {
+      id: data.id,
+      email: data.email,
+      name: data.name,
+      isAdmin: data.isAdmin ?? false,
+      avatarUrl: data.avatarUrl,
+      token: data.token,
+      isNewUser: data.isNewUser,
+    };
+  }
+
+  return {
+    id: data.user.id,
+    email: data.user.email,
+    name: data.user.name ?? '',
+    isAdmin: data.user.isAdmin ?? false,
+    avatarUrl: data.user.avatarUrl,
+    token: data.token,
+    isNewUser: data.isNewUser ?? false,
+  };
+};
+
 export interface UpdateProfileRequest {
   name?: string;
   address?: string;
@@ -45,16 +70,15 @@ export interface ResetPasswordRequest {
 }
 
 export const authService = {
-  
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const { data } = await fetcher.post<AuthResponse>('/users/login', credentials);
-    return data;
+    const { data } = await fetcher.post('/users/login', credentials);
+    return mapBackendAuthResponse(data);
   },
 
   
   register: async (userData: RegisterRequest): Promise<AuthResponse> => {
-    const { data } = await fetcher.post<AuthResponse>('/users/register', userData);
-    return data;
+    const { data } = await fetcher.post('/users/register', userData);
+    return mapBackendAuthResponse(data);
   },
 
   
@@ -65,14 +89,14 @@ export const authService = {
 
   
   updateProfile: async (profileData: UpdateProfileRequest): Promise<AuthResponse> => {
-    const { data } = await fetcher.put<AuthResponse>('/users/updateProfile', profileData);
-    return data;
+    const { data } = await fetcher.put('/users/updateProfile', profileData);
+    return mapBackendAuthResponse(data);
   },
 
   
   changePassword: async (passwordData: ChangePasswordRequest): Promise<AuthResponse> => {
-    const { data } = await fetcher.put<AuthResponse>('/users/changePassword', passwordData);
-    return data;
+    const { data } = await fetcher.put('/users/changePassword', passwordData);
+    return mapBackendAuthResponse(data);
   },
 
   
@@ -88,20 +112,7 @@ export const authService = {
   },
 
   googleLogin: async (credential: string): Promise<AuthResponse> => {
-    const { data } = await fetcher.post<any>('/users/google-login', { credential });
-    // Backend trả về { token, isNewUser, user: {...} }, cần map lại thành AuthResponse format
-    if (data.user) {
-      return {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.name || 'Người dùng',
-        isAdmin: data.user.isAdmin || false,
-        avatarUrl: data.user.avatarUrl,
-        token: data.token,
-        isNewUser: data.isNewUser || false, // Lấy flag isNewUser từ backend
-      };
-    }
-    // Fallback nếu format khác
-    return data;
+    const { data } = await fetcher.post('/users/google-login', { credential });
+    return mapBackendAuthResponse(data);
   },
 };

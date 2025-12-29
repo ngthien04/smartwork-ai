@@ -194,18 +194,18 @@ export default function AuthPage() {
 
       setGoogleLoading(true);
 
-      // Cập nhật tên người dùng
+      // Cập nhật tên người dùng trong Redux + localStorage
+      const baseUser = mapResponseToUser(pendingAuthResponse);
+      const optimisticUser = { ...baseUser, name: confirmedName };
+      dispatch(setCredentials({ user: optimisticUser, token: pendingAuthResponse.token }));
+
+      // Gửi request cập nhật tên lên server (nếu lỗi thì giữ tên ở client, chỉ cảnh báo)
       try {
-        const updatedResponse = await authService.updateProfile({ name: confirmedName });
-        const user = mapResponseToUser(updatedResponse);
-        dispatch(setCredentials({ user, token: updatedResponse.token }));
         message.success('Đã lưu tên người dùng thành công');
+        await authService.updateProfile({ name: confirmedName });
       } catch (updateError: any) {
-        // Nếu update thất bại, vẫn đăng nhập với tên từ Google
-        console.warn('Không thể cập nhật tên:', updateError);
-        const user = mapResponseToUser(pendingAuthResponse);
-        dispatch(setCredentials({ user, token: pendingAuthResponse.token }));
-        message.warning('Đăng nhập thành công, nhưng không thể cập nhật tên');
+        console.warn('Không thể cập nhật tên lên server:', updateError);
+        message.warning('Đăng nhập thành công, nhưng chưa lưu được tên lên server');
       }
 
       setShowNameConfirmModal(false);

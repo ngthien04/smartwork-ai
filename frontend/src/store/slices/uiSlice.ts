@@ -4,8 +4,10 @@ import type { PayloadAction } from '@reduxjs/toolkit';
 import type { UIState } from '@/types';
 
 const initialState: UIState = {
+  // Mặc định dùng light mode; user có thể bật dark trong Settings
   themeMode: 'light',
-  sidebarCollapsed: false,
+  // Sidebar mặc định thu gọn; bấm icon menu ở header mới mở rộng
+  sidebarCollapsed: true,
   commandPaletteOpen: false,
   loadingGlobal: false,
 };

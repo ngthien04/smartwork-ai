@@ -8,16 +8,22 @@ import {
   BellOutlined
 } from '@ant-design/icons';
 import { Badge, Dropdown, List, Spin, Empty, Typography, Popconfirm } from 'antd';
+import type { MenuProps } from 'antd';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import type { RootState } from '@/types';
 import { toggleSidebar, setCommandPaletteOpen } from '@/store/slices/uiSlice';
 import notificationServices, { type Notification } from '@/services/notificationServices';
+import { logout } from '@/store/slices/authSlice';
+import { ROUTES } from '@/routes/path';
 
 const { Text } = Typography;
 
 export default function Header() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const sidebarCollapsed = useSelector((state: RootState) => state.ui.sidebarCollapsed);
   const { user } = useSelector((state: RootState) => state.auth);
@@ -30,6 +36,11 @@ export default function Header() {
 
   const handleSearchClick = () => {
     dispatch(setCommandPaletteOpen(true));
+  };
+
+  const handleLogout = () => {
+    dispatch(logout());
+    navigate(ROUTES.AUTH);
   };
 
   
@@ -266,8 +277,34 @@ export default function Header() {
       </div>
     </div>
   );
+  const isAdminUser = !!user?.isAdmin;
+  const isOnAdminPage = location.pathname.startsWith(ROUTES.ADMIN);
+
+  const userMenuItems: MenuProps['items'] = [];
+
+  if (isAdminUser) {
+    userMenuItems.push({
+      key: 'switch-admin',
+      label: isOnAdminPage ? 'Trang chủ' : 'Trang quản trị',
+      onClick: () => {
+        navigate(
+          isOnAdminPage
+            ? ROUTES.DASHBOARD
+            : `${ROUTES.ADMIN}?tab=users`
+        );
+      },
+    });
+    userMenuItems.push({ type: 'divider' } as any);
+  }
+
+  userMenuItems.push({
+    key: 'logout',
+    label: 'Đăng xuất',
+    onClick: handleLogout,
+  });
+
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-4 flex items-center justify-between h-16">
+    <header className="app-header shadow-sm border-b px-4 flex items-center justify-between h-16">
       <div className="flex items-center">
         <Button
           variant="ghost"
@@ -314,14 +351,16 @@ export default function Header() {
           </div>
         </Dropdown>
 
-        <div className="flex items-center cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
-          <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-2">
-            <UserOutlined className="text-sm" />
+        <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
+          <div className="flex items-center cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-2">
+              <UserOutlined className="text-sm" />
+            </div>
+            <span className="text-sm font-medium text-gray-700">
+              {user?.name || 'User'}
+            </span>
           </div>
-          <span className="text-sm font-medium text-gray-700">
-            {user?.name || 'User'}
-          </span>
-        </div>
+        </Dropdown>
       </div>
     </header>
   );

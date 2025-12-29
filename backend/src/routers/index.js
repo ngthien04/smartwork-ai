@@ -18,6 +18,7 @@ import aiRouter from './ai.router.js';
 import notificationRouter from './notification.router.js';
 import noteRouter from './notes.router.js';
 import eventsRouter from './event.router.js';
+import adminRouter from './admin.router.js';
 
 
 const api = Router();
@@ -40,5 +41,6 @@ api.use('/ai', aiRouter);
 api.use('/notifications', notificationRouter);
 api.use('/notes', noteRouter);
 api.use('/events', eventsRouter);
+api.use('/admin', adminRouter);
 
 export default api;
