@@ -15,6 +15,9 @@ const AIInsightSchema = new Schema(
     },
     message: { type: String, required: true },
     score: { type: Number, min: 0, max: 1 },
+
+    metadata: { type: Schema.Types.Mixed, default: {} },
+
     acceptedBy: { type: Schema.Types.ObjectId, ref: "user" },
     acceptedAt: Date,
     dismissedBy: { type: Schema.Types.ObjectId, ref: "user" },

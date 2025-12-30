@@ -19,14 +19,15 @@ export type AIPlannedTask = {
 
 export const aiServices = {
   planner(payload: AIPlanPayload) {
-    return api.post<{ goal: string; tasks: AIPlannedTask[] }>(
-      '/ai/plan',
-      payload
-    );
+    return api.post<{ goal: string; tasks: AIPlannedTask[] }>('/ai/plan', payload);
   },
 
-  analyzeTaskPriority(taskId: string) {
-    return api.post(`/ai/tasks/${taskId}/priority`);
+  getLatestTaskPriorityInsight(taskId: string) {
+    return api.get(`/ai/tasks/${taskId}/priority/latest`);
+  },
+
+  analyzeTaskPriority(taskId: string, force = false) {
+    return api.post(`/ai/tasks/${taskId}/priority/analyze`, { force });
   },
 
   async chat(payload: any): Promise<string> {

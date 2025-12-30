@@ -22,6 +22,7 @@ import {
   ThunderboltOutlined,
   InfoCircleOutlined,
   ReloadOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 
 import ChatPanel from '@/components/chat/ChatPanel';
@@ -110,9 +111,16 @@ Search tasks không tìm theo description`,
       setTriageLoading(true);
       setTriage(null);
 
-      // ✅ Bạn cần implement api này ở aiServices + backend
-      // Expected: POST /ai/triage/bugs { buglist: string }
-      const res = await aiServices.triageBugs({ buglist: clean });
+      const res = await aiServices.triageBugs({
+        buglist: clean,
+        context: {
+          env: import.meta.env.MODE,
+          userAgent: navigator.userAgent,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          locale: navigator.language,
+          routes: [window.location.pathname],
+        },
+      });
       setTriage(res.data);
     } catch (e: any) {
       console.error(e);
@@ -127,73 +135,154 @@ Search tasks không tìm theo description`,
     setTriage(null);
   };
 
+  const sortedItems = useMemo(() => {
+    if (!triage?.items) return [];
+    return [...triage.items].sort((a, b) => a.order - b.order);
+  }, [triage?.items]);
+
   return (
-    <div className="assistant-page">
-      <div className="mb-6">
-        <Title level={2} className="m-0">
-          {t('assistant.title')}
-        </Title>
-        <Text type="secondary">
-          Trợ lý AI hỗ trợ bug triage: phân loại severity/priority và đề xuất thứ tự xử lý.
-        </Text>
+    <div
+      className="assistant-page"
+      style={{
+        padding: 16,
+        background:
+          'linear-gradient(180deg, rgba(15, 23, 42, 0.03) 0%, rgba(15, 23, 42, 0.01) 100%)',
+        minHeight: '100vh',
+      }}
+    >
+      {/* Header */}
+      <div className="mb-4">
+        <Space align="start" size={12}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(22, 119, 255, 0.10)',
+              border: '1px solid rgba(22, 119, 255, 0.20)',
+            }}
+          >
+            <RobotOutlined style={{ fontSize: 20 }} />
+          </div>
+
+          <div>
+            <Title level={2} className="m-0">
+              {t('assistant.title')}
+            </Title>
+          </div>
+        </Space>
       </div>
 
-      <Row gutter={[24, 24]}>
+      <Row gutter={[16, 16]}>
         {/* Chat Panel */}
         <Col xs={24} lg={16}>
-          <div className="h-[600px]">
-            <ChatPanel />
-          </div>
+          <Card
+            style={{ borderRadius: 16 }}
+            bodyStyle={{ padding: 0 }}
+            title={
+              <Space>
+                <MessageOutlined />
+                <span>Chat</span>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  (hỏi đáp nhanh trong app)
+                </Text>
+              </Space>
+            }
+            extra={
+              <Tooltip title="Mẹo: bạn có thể hỏi về task, deadline, cách dùng app, hoặc nhờ tạo task qua chat.">
+                <InfoCircleOutlined style={{ opacity: 0.7 }} />
+              </Tooltip>
+            }
+          >
+            <div
+              style={{
+                height: 640,
+                borderTop: '1px solid rgba(5, 5, 5, 0.06)',
+              }}
+            >
+              {/* Wrapper padding nhẹ cho đẹp, nhưng không phá layout của ChatPanel */}
+              <div style={{ height: '100%', padding: 12 }}>
+                <div
+                  style={{
+                    height: '100%',
+                    borderRadius: 12,
+                    background: '#fff',
+                    border: '1px solid rgba(5, 5, 5, 0.06)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <ChatPanel />
+                </div>
+              </div>
+            </div>
+          </Card>
         </Col>
 
         {/* Bug triage */}
         <Col xs={24} lg={8}>
           <Space direction="vertical" className="w-full" size="large">
             <Card
+              style={{ borderRadius: 16 }}
               title={
                 <Space>
                   <BugOutlined />
-                  <span>Bug Triage (Buglist → Triage)</span>
+                  <span>Bug Triage</span>
                   <Tooltip title="Dán danh sách bug (mỗi dòng 1 bug). AI sẽ phân loại severity/priority và sắp thứ tự xử lý.">
                     <InfoCircleOutlined style={{ opacity: 0.7 }} />
                   </Tooltip>
                 </Space>
               }
               extra={
-                <Space>
-                  <Button
-                    size="small"
-                    icon={<ReloadOutlined />}
-                    onClick={handleReset}
-                    disabled={triageLoading}
-                  >
-                    Reset
-                  </Button>
-                </Space>
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={handleReset}
+                  disabled={triageLoading}
+                >
+                  Reset
+                </Button>
               }
               className="w-full"
             >
               <Space direction="vertical" className="w-full" size="middle">
                 {/* Templates */}
-                <Space wrap>
-                  {templates.map((tp) => (
-                    <Button
-                      key={tp.title}
-                      size="small"
-                      type="default"
-                      onClick={() => setBugText(tp.text)}
-                      disabled={triageLoading}
-                    >
-                      {tp.title}
-                    </Button>
-                  ))}
-                </Space>
+                <div
+                  style={{
+                    background: 'rgba(0,0,0,0.02)',
+                    border: '1px solid rgba(5, 5, 5, 0.06)',
+                    borderRadius: 12,
+                    padding: 10,
+                  }}
+                >
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Templates
+                  </Text>
+                  <div style={{ height: 6 }} />
+                  <Space wrap>
+                    {templates.map((tp) => (
+                      <Button
+                        key={tp.title}
+                        size="small"
+                        type="default"
+                        onClick={() => setBugText(tp.text)}
+                        disabled={triageLoading}
+                        style={{ borderRadius: 10 }}
+                      >
+                        {tp.title}
+                      </Button>
+                    ))}
+                  </Space>
+                </div>
 
                 <TextArea
                   placeholder={`Dán buglist vào đây...\nVí dụ:\n- Crash khi bấm Save\n- Không load tasks khi filter label`}
                   value={bugText}
                   onChange={(e) => setBugText(e.target.value)}
                   rows={8}
+                  style={{ borderRadius: 12 }}
                 />
 
                 <div className="flex justify-between items-center">
@@ -203,19 +292,21 @@ Search tasks không tìm theo description`,
                   <Space>
                     <Button
                       type="primary"
-                      icon={<RobotOutlined />}
+                      icon={<ThunderboltOutlined />}
                       onClick={handleRunTriage}
                       loading={triageLoading}
+                      style={{ borderRadius: 12 }}
                     >
-                      Analyze & Triage
+                      Analyze
                     </Button>
                   </Space>
                 </div>
               </Space>
             </Card>
 
-            {/* Result */}
+            {/* Result (scrollable) */}
             <Card
+              style={{ borderRadius: 16 }}
               title={
                 <Space>
                   <ThunderboltOutlined />
@@ -223,6 +314,11 @@ Search tasks không tìm theo description`,
                 </Space>
               }
               className="w-full"
+              bodyStyle={{
+                maxHeight: 560,
+                overflow: 'hidden',
+                paddingRight: 8,
+              }}
             >
               {!triage && !triageLoading && (
                 <Empty
@@ -239,100 +335,138 @@ Search tasks không tìm theo description`,
               )}
 
               {triage && (
-                <Space direction="vertical" className="w-full" size="middle">
-                  {/* Summary */}
-                  <div className="rounded border border-gray-200 p-3 bg-gray-50">
-                    <Space direction="vertical" className="w-full" size={6}>
-                      <Text strong>Tổng quan</Text>
-                      <Text type="secondary" className="text-xs">
-                        Tổng: <b>{triage.summary.total}</b>
-                      </Text>
-
-                      <Space wrap>
-                        {(['S1', 'S2', 'S3', 'S4'] as const).map((s) => (
-                          <Tag key={s} color={severityColor(s)}>
-                            {s}: {triage.summary.bySeverity?.[s] ?? 0}
-                          </Tag>
-                        ))}
-                      </Space>
-
-                      <Space wrap>
-                        {(['urgent', 'high', 'normal', 'low'] as const).map((p) => (
-                          <Tag key={p} color={priorityColor(p)}>
-                            {p}: {triage.summary.byPriority?.[p] ?? 0}
-                          </Tag>
-                        ))}
-                      </Space>
-
-                      {Array.isArray(triage.summary.topRisks) &&
-                        triage.summary.topRisks.length > 0 && (
-                          <>
-                            <Divider className="my-2" />
-                            <Text strong className="text-sm">
-                              Top risks
+                <div style={{ maxHeight: 520, overflowY: 'auto', paddingRight: 4 }}>
+                  <Space direction="vertical" className="w-full" size="middle">
+                    {/* Summary sticky */}
+                    <div
+                      style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 2,
+                        background: '#fff',
+                        paddingBottom: 8,
+                      }}
+                    >
+                      <div
+                        className="rounded border border-gray-200 p-3"
+                        style={{
+                          borderRadius: 14,
+                          background: 'rgba(0,0,0,0.02)',
+                        }}
+                      >
+                        <Space direction="vertical" className="w-full" size={6}>
+                          <div className="flex items-center justify-between">
+                            <Text strong>Tổng quan</Text>
+                            <Text type="secondary" className="text-xs">
+                              Tổng: <b>{triage.summary.total}</b>
                             </Text>
-                            <ul className="list-disc pl-5 m-0">
-                              {triage.summary.topRisks.slice(0, 5).map((r, idx) => (
-                                <li key={idx}>
-                                  <Text className="text-sm">{r}</Text>
-                                </li>
-                              ))}
-                            </ul>
-                          </>
-                        )}
-                    </Space>
-                  </div>
-
-                  {/* Items */}
-                  <List<TriageItem>
-                    dataSource={[...triage.items].sort((a, b) => a.order - b.order)}
-                    locale={{ emptyText: 'Không có item' }}
-                    renderItem={(it) => (
-                      <List.Item>
-                        <div className="w-full">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <Text strong className="block">
-                                #{it.order} — {it.title}
-                              </Text>
-                              {it.description && (
-                                <Text type="secondary" className="text-xs block">
-                                  {it.description}
-                                </Text>
-                              )}
-                            </div>
-
-                            <Space wrap>
-                              <Tag color={severityColor(it.severity)}>{it.severity}</Tag>
-                              <Tag color={priorityColor(it.priority)}>{it.priority}</Tag>
-                              <Tooltip title={`Confidence: ${Math.round((it.confidence ?? 0) * 100)}%`}>
-                                <Tag>{Math.round((it.confidence ?? 0) * 100)}%</Tag>
-                              </Tooltip>
-                            </Space>
                           </div>
 
-                          {Array.isArray(it.rationale) && it.rationale.length > 0 && (
-                            <ul className="list-disc pl-5 mt-2 mb-0">
-                              {it.rationale.slice(0, 4).map((r, idx) => (
-                                <li key={idx}>
-                                  <Text className="text-sm">{r}</Text>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                          <Space wrap>
+                            {(['S1', 'S2', 'S3', 'S4'] as const).map((s) => (
+                              <Tag key={s} color={severityColor(s)} style={{ borderRadius: 999 }}>
+                                {s}: {triage.summary.bySeverity?.[s] ?? 0}
+                              </Tag>
+                            ))}
+                          </Space>
 
-                          {Array.isArray(it.suggestedLabels) && it.suggestedLabels.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {it.suggestedLabels.slice(0, 8).map((lb) => (
-                                <Tag key={lb}>{lb}</Tag>
-                              ))}
+                          <Space wrap>
+                            {(['urgent', 'high', 'normal', 'low'] as const).map((p) => (
+                              <Tag key={p} color={priorityColor(p)} style={{ borderRadius: 999 }}>
+                                {p}: {triage.summary.byPriority?.[p] ?? 0}
+                              </Tag>
+                            ))}
+                          </Space>
+
+                          {Array.isArray(triage.summary.topRisks) &&
+                            triage.summary.topRisks.length > 0 && (
+                              <>
+                                <Divider className="my-2" />
+                                <Text strong className="text-sm">
+                                  Top risks
+                                </Text>
+                                <ul className="list-disc pl-5 m-0">
+                                  {triage.summary.topRisks.slice(0, 5).map((r, idx) => (
+                                    <li key={idx}>
+                                      <Text className="text-sm">{r}</Text>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </>
+                            )}
+                        </Space>
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    <List<TriageItem>
+                      dataSource={sortedItems}
+                      locale={{ emptyText: 'Không có item' }}
+                      renderItem={(it) => (
+                        <List.Item style={{ paddingLeft: 8, paddingRight: 8 }}>
+                          <div
+                            style={{
+                              width: '100%',
+                              border: '1px solid rgba(5, 5, 5, 0.06)',
+                              borderRadius: 14,
+                              padding: 12,
+                              background: '#fff',
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <Text strong className="block">
+                                  #{it.order} — {it.title}
+                                </Text>
+                                {it.description && (
+                                  <Text type="secondary" className="text-xs block">
+                                    {it.description}
+                                  </Text>
+                                )}
+                              </div>
+
+                              <Space wrap>
+                                <Tag color={severityColor(it.severity)} style={{ borderRadius: 999 }}>
+                                  {it.severity}
+                                </Tag>
+                                <Tag color={priorityColor(it.priority)} style={{ borderRadius: 999 }}>
+                                  {it.priority}
+                                </Tag>
+                                <Tooltip
+                                  title={`Confidence: ${Math.round((it.confidence ?? 0) * 100)}%`}
+                                >
+                                  <Tag style={{ borderRadius: 999 }}>
+                                    {Math.round((it.confidence ?? 0) * 100)}%
+                                  </Tag>
+                                </Tooltip>
+                              </Space>
                             </div>
-                          )}
-                        </div>
-                      </List.Item>
-                    )}
-                  />
-                </Space>
+
+                            {Array.isArray(it.rationale) && it.rationale.length > 0 && (
+                              <ul className="list-disc pl-5 mt-2 mb-0">
+                                {it.rationale.slice(0, 4).map((r, idx) => (
+                                  <li key={idx}>
+                                    <Text className="text-sm">{r}</Text>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {Array.isArray(it.suggestedLabels) && it.suggestedLabels.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {it.suggestedLabels.slice(0, 8).map((lb) => (
+                                  <Tag key={lb} style={{ borderRadius: 999 }}>
+                                    {lb}
+                                  </Tag>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </List.Item>
+                      )}
+                    />
+                  </Space>
+                </div>
               )}
             </Card>
           </Space>

@@ -248,12 +248,8 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-3">
-      {/* TOP BAR (giống calendar) */}
-      <Card
-        className="sticky top-0 z-10"
-        style={{ borderRadius: 12 }}
-        bodyStyle={{ padding: 16 }}
-      >
+      {/* TOP BAR */}
+      <Card className="sticky top-0 z-10" style={{ borderRadius: 12 }} bodyStyle={{ padding: 16 }}>
         <div className="flex flex-col gap-3">
           {/* Title row */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
@@ -285,11 +281,7 @@ export default function TasksPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 items-center">
-              <Select
-                style={{ minWidth: 170 }}
-                value={filters.status}
-                onChange={(value) => setFilters((p) => ({ ...p, status: value }))}
-              >
+              <Select style={{ minWidth: 170 }} value={filters.status} onChange={(value) => setFilters((p) => ({ ...p, status: value }))}>
                 <Option value="all">Tất cả trạng thái</Option>
                 <Option value="backlog">Backlog</Option>
                 <Option value="todo">Cần làm</Option>
@@ -297,11 +289,7 @@ export default function TasksPage() {
                 <Option value="done">Hoàn thành</Option>
               </Select>
 
-              <Select
-                style={{ minWidth: 150 }}
-                value={filters.priority}
-                onChange={(value) => setFilters((p) => ({ ...p, priority: value }))}
-              >
+              <Select style={{ minWidth: 150 }} value={filters.priority} onChange={(value) => setFilters((p) => ({ ...p, priority: value }))}>
                 <Option value="all">Mọi ưu tiên</Option>
                 <Option value="low">Thấp</Option>
                 <Option value="normal">Bình thường</Option>
@@ -309,11 +297,7 @@ export default function TasksPage() {
                 <Option value="urgent">Khẩn cấp</Option>
               </Select>
 
-              <Select
-                style={{ minWidth: 200 }}
-                value={filters.assignee}
-                onChange={(value) => setFilters((p) => ({ ...p, assignee: value }))}
-              >
+              <Select style={{ minWidth: 200 }} value={filters.assignee} onChange={(value) => setFilters((p) => ({ ...p, assignee: value }))}>
                 <Option value="all">Mọi người phụ trách</Option>
                 {assigneeOptions.map((u) => (
                   <Option key={u.id} value={u.id}>
@@ -322,11 +306,7 @@ export default function TasksPage() {
                 ))}
               </Select>
 
-              <Select
-                style={{ minWidth: 170 }}
-                value={filters.label}
-                onChange={(value) => setFilters((p) => ({ ...p, label: value }))}
-              >
+              <Select style={{ minWidth: 170 }} value={filters.label} onChange={(value) => setFilters((p) => ({ ...p, label: value }))}>
                 <Option value="all">Mọi nhãn</Option>
                 {labelOptions.map((lb) => (
                   <Option key={lb.id} value={lb.id}>
@@ -341,7 +321,7 @@ export default function TasksPage() {
             </div>
           </div>
 
-          {/* AI status row - ngang kiểu chip */}
+          {/* AI status row */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <Text strong>AI status</Text>
@@ -351,12 +331,7 @@ export default function TasksPage() {
                     Clear AI
                   </Button>
                 ) : null}
-                <Button
-                  size="small"
-                  icon={<ReloadOutlined />}
-                  loading={aiStatusLoading}
-                  onClick={fetchAIStatus}
-                >
+                <Button size="small" icon={<ReloadOutlined />} loading={aiStatusLoading} onClick={fetchAIStatus}>
                   Refresh
                 </Button>
               </Space>
@@ -382,9 +357,8 @@ export default function TasksPage() {
                       onClick={() => {
                         setAiFilterKey(it.key);
 
-                        // auto adjust filters để thấy effect rõ
                         if (it.key === 'urgent') setFilters((p) => ({ ...p, priority: 'urgent', status: 'all' }));
-                        if (it.key === 'blocked') setFilters((p) => ({ ...p, status: 'all' })); // tránh status blocked nếu backend không có
+                        if (it.key === 'blocked') setFilters((p) => ({ ...p, status: 'all' }));
                         if (it.key === 'overdue') setFilters((p) => ({ ...p, status: 'all', priority: 'all' }));
                         if (it.key === 'unassigned') setFilters((p) => ({ ...p, assignee: 'all', status: 'all' }));
                       }}
@@ -401,13 +375,9 @@ export default function TasksPage() {
         </div>
       </Card>
 
-      <Alert
-        type="info"
-        showIcon
-        message="Task được tạo trong Project Detail. Đây là bảng tổng quan & drag-drop."
-      />
+      <Alert type="info" showIcon message="Task được tạo trong Project Detail. Đây là bảng tổng quan & drag-drop." />
 
-      {/* STATS row ngang */}
+      {/* STATS */}
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8}>
           <Card style={{ borderRadius: 12 }}>
@@ -426,7 +396,7 @@ export default function TasksPage() {
         </Col>
       </Row>
 
-      {/* BOARD full width + scroll ngang kiểu calendar */}
+      {/* BOARD */}
       <Card style={{ borderRadius: 12 }}>
         <div style={{ overflowX: 'auto' }}>
           <div style={{ minWidth: 980 }}>
@@ -494,21 +464,6 @@ export default function TasksPage() {
                   );
                 })}
               </Avatar.Group>
-
-              <Text type="secondary" className="text-xs block mt-3 mb-1">
-                Thuộc sprint
-              </Text>
-              {selectedTask.sprint ? (
-                <Tag>
-                  {typeof selectedTask.sprint === 'string'
-                    ? selectedTask.sprint
-                    : (selectedTask.sprint as any).name}
-                </Tag>
-              ) : (
-                <Text type="secondary" className="text-xs">
-                  Không thuộc sprint nào
-                </Text>
-              )}
             </div>
           </Space>
         ) : (

@@ -34,7 +34,20 @@ const toId = (v) => {
   return new mongoose.Types.ObjectId(s);
 };
 
+async function userHasAnyRoleInTeam(userId, teamId) {
+  if (!teamId) return false;
+  const ok = await UserModel.exists({
+    _id: userId,
+    roles: { $elemMatch: { team: toId(teamId) } },
+  });
+  return !!ok;
+}
 
+function isStale(createdAt, days = 3) {
+  if (!createdAt) return true;
+  const ms = Date.now() - new Date(createdAt).getTime();
+  return ms > days * 24 * 60 * 60 * 1000;
+}
 
 async function handleCreateTaskFromDraft(req, t, intentResult) {
   let replyText = '';
@@ -672,16 +685,149 @@ router.post(
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
+    if (!isValidId(taskId)) return res.status(400).send('Invalid taskId');
+
+    const task = await TaskModel.findById(taskId).lean();
+    if (!task) return res.status(404).send('Task không tồn tại');
+
+    const latestInsight = await AIInsightModel.findOne({ task: task._id, kind:'priority_suggestion', dismissedAt: { $exists:false } })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (latestInsight) {
+      const analysis =
+        latestInsight.metadata?.analysis ||
+        parseAnalysisFromLegacyMessage(latestInsight.message);
+
+      return res.send({
+        cached: true,
+        insight: latestInsight,
+        analysis,
+      });
+    }
+
+    // 3️⃣ Chưa có → gọi AI
+    const analysis = await analyzeTaskPriority({
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate,
+      currentStatus: task.status,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      assigneeCount: task.assignees?.length || 0,
+      labelNames: [],
+    });
+
+    const insight = await AIInsightModel.create({
+      team: task.team,
+      task: task._id,
+      kind: 'priority_suggestion',
+
+      message: [
+        `priority = ${analysis.priority}`,
+        `riskScore = ${analysis.riskScore}`,
+        `confidence = ${analysis.confidence}`,
+        '',
+        'Lý do:',
+        ...(analysis.reasons || []).map((r) => `- ${r}`),
+        '',
+        'Gợi ý hành động:',
+        ...(analysis.recommendedActions || []).map((a) => `- ${a}`),
+      ].join('\n'),
+
+      score: analysis.riskScore,
+
+      metadata: {
+        analysis,
+        source: 'analyzeTaskPriority',
+      },
+    });
+
+    res.send({
+      cached: false,
+      insight,
+      analysis,
+    });
+  })
+);
+
+router.get(
+  '/tasks/:taskId/priority/latest',
+  authMid,
+  handler(async (req, res) => {
+    const { taskId } = req.params;
     if (!isValidId(taskId)) return res.status(BAD_REQUEST).send('TaskId không hợp lệ');
 
-    const task = await TaskModel.findById(taskId).populate('team').lean();
+    const task = await TaskModel.findById(taskId, { team: 1 }).lean();
     if (!task) return res.status(404).send('Task không tồn tại');
+
+    const can = req.user?.isAdmin || (await userHasAnyRoleInTeam(req.user.id, task.team));
+    if (!can) return res.status(UNAUTHORIZED).send('Không có quyền');
+
+    const latest = await AIInsightModel.findOne({
+      task: toId(taskId),
+      kind: 'priority_suggestion',
+      isDeleted: { $ne: true },
+    })
+      .sort('-createdAt')
+      .lean();
+
+    res.send({ insight: latest || null });
+  })
+);
+
+// POST /ai/tasks/:taskId/priority/analyze
+// body: { force?: boolean }
+router.post(
+  '/tasks/:taskId/priority/analyze',
+  authMid,
+  handler(async (req, res) => {
+    const { taskId } = req.params;
+    if (!isValidId(taskId)) return res.status(BAD_REQUEST).send('TaskId không hợp lệ');
+
+    const force = Boolean(req.body?.force);
+
+    const task = await TaskModel.findById(taskId)
+      .populate('team')
+      .populate('labels') // để lấy labelNames
+      .lean();
+
+    if (!task) return res.status(404).send('Task không tồn tại');
+
+    // quyền: user phải thuộc team task
+    const can = req.user?.isAdmin || (await userHasAnyRoleInTeam(req.user.id, task.team?._id || task.team));
+    if (!can) return res.status(UNAUTHORIZED).send('Không có quyền');
+
+    const teamId = task.team?._id || task.team;
+
+    // lấy insight mới nhất để cache
+    const latest = await AIInsightModel.findOne({
+      task: toId(taskId),
+      kind: 'priority_suggestion',
+      isDeleted: { $ne: true },
+    })
+      .sort('-createdAt')
+      .lean();
+
+    // nếu không force và latest còn mới -> trả lại
+    if (!force && latest && !isStale(latest.createdAt, 3)) {
+      return res.send({ analysis: latest?.metadata?.analysis || null, insight: { ...latest, id: latest._id }, reused: true });
+    }
+
+    // build input cho AI (dựa vào schema bạn đã có)
+    const labelNames = Array.isArray(task.labels)
+      ? task.labels.map((lb) => lb?.name).filter(Boolean)
+      : [];
 
     const analysis = await analyzeTaskPriority({
       title: task.title,
       description: task.description || '',
       dueDate: task.dueDate,
       currentStatus: task.status,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      assigneeCount: Array.isArray(task.assignees) ? task.assignees.length : 0,
+      labelNames,
     });
 
     const suggestPatch = {};
@@ -701,429 +847,27 @@ router.post(
     ];
 
     const insight = await AIInsightModel.create({
-      team: task.team,
+      team: teamId,
       task: task._id,
       kind: 'priority_suggestion',
       message: messageLines.join('\n'),
       score: analysis.riskScore,
-
       metadata: {
-        suggestPatch,                 // { priority: 'high' ... }
-        suggestLabelNames,            // ['risk'] hoặc []
-        analysis,                     // lưu lại full analysis nếu muốn
+        suggestPatch,
+        suggestLabelNames,
+        analysis,
         source: 'analyzeTaskPriority',
       },
     });
 
-    res.send({ analysis, insight: { ...insight.toObject(), id: insight._id } });
-  })
-);
-
-/** =========================
- * INSIGHTS: /ai/insights/*
- * ========================= */
-
-async function userHasAnyRoleInTeam(userId, teamId) {
-  if (!teamId) return false;
-
-  const team = await TeamModel.findOne({
-    _id: toId(teamId),
-    isDeleted: false,
-    $or: [{ leaders: toId(userId) }, { 'members.user': toId(userId) }],
-  }).lean();
-
-  return !!team;
-}
-
-async function userCanManageTeam(userId, teamId) {
-  if (!teamId) return false;
-
-  const team = await TeamModel.findOne({
-    _id: toId(teamId),
-    isDeleted: false,
-    $or: [
-      { leaders: toId(userId) },
-      { members: { $elemMatch: { user: toId(userId), role: { $in: ['leader', 'admin'] } } } },
-    ],
-  }).lean();
-
-  return !!team;
-}
-
-async function canViewInsight(user, doc) {
-  if (user?.isAdmin) return true;
-  return userHasAnyRoleInTeam(user.id, doc.team);
-}
-async function canManageInsight(user, doc) {
-  if (user?.isAdmin) return true;
-  return userCanManageTeam(user.id, doc.team);
-}
-
-function buildQuery(qs) {
-  const q = {};
-  if (qs.team && isValidId(qs.team)) q.team = toId(qs.team);
-  if (qs.task && isValidId(qs.task)) q.task = toId(qs.task);
-  if (qs.kind) q.kind = String(qs.kind);
-
-  if (qs.status) {
-    switch (qs.status) {
-      case 'pending':
-        q.acceptedAt = { $exists: false };
-        q.dismissedAt = { $exists: false };
-        break;
-      case 'accepted':
-        q.acceptedAt = { $exists: true };
-        break;
-      case 'dismissed':
-        q.dismissedAt = { $exists: true };
-        break;
-    }
-  }
-
-  if (qs.from || qs.to) {
-    q.createdAt = {};
-    if (qs.from) q.createdAt.$gte = new Date(qs.from);
-    if (qs.to) q.createdAt.$lte = new Date(qs.to);
-  }
-
-  if (qs.scoreMin != null || qs.scoreMax != null) {
-    q.score = {};
-    if (qs.scoreMin != null) q.score.$gte = Number(qs.scoreMin);
-    if (qs.scoreMax != null) q.score.$lte = Number(qs.scoreMax);
-  }
-
-  return q;
-}
-
-router.get(
-  '/insights',
-  authMid,
-  handler(async (req, res) => {
-    const { page, limit, skip } = parsePaging(req.query);
-    const q = buildQuery(req.query);
-    const populate = req.query.populate === '1' || req.query.populate === 'true';
-
-    if (!req.user?.isAdmin && !q.team) {
-      const myTeamIds = await getUserTeamIds(req.user.id);
-      if (!myTeamIds.length) return res.send({ page, limit, total: 0, items: [] });
-      q.team = { $in: myTeamIds.map(toId) };
-    }
-
-    const cur = AIInsightModel.find(q).sort('-createdAt').skip(skip).limit(limit);
-    if (populate) {
-      cur
-        .populate('task', 'title status project team priority dueDate labels')
-        .populate('acceptedBy', 'name email avatarUrl')
-        .populate('dismissedBy', 'name email avatarUrl');
-    }
-
-    const [items, total] = await Promise.all([cur.lean(), AIInsightModel.countDocuments(q)]);
-    res.send({ page, limit, total, items });
-  })
-);
-
-router.get(
-  '/insights/:id',
-  authMid,
-  handler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid insight id');
-
-    const doc = await AIInsightModel.findById(id)
-      .populate('task', 'title status project team priority dueDate labels')
-      .populate('acceptedBy', 'name email avatarUrl')
-      .populate('dismissedBy', 'name email avatarUrl')
-      .lean();
-
-    if (!doc) return res.status(404).send('Insight không tồn tại');
-    if (!(await canViewInsight(req.user, doc))) {
-      return res.status(UNAUTHORIZED).send('Không có quyền xem insight này');
-    }
-
-    res.send(doc);
-  })
-);
-
-router.post(
-  '/insights',
-  authMid,
-  handler(async (req, res) => {
-    const { team, task, kind, message, score } = req.body || {};
-    if (!kind) return res.status(BAD_REQUEST).send('Missing kind');
-    if (!message) return res.status(BAD_REQUEST).send('Missing message');
-
-    let teamId = team && isValidId(team) ? toId(team) : null;
-
-    if (task) {
-      if (!isValidId(task)) return res.status(BAD_REQUEST).send('Invalid task id');
-      const t = await TaskModel.findById(task).lean();
-      if (!t || t.isDeleted) return res.status(404).send('Task không tồn tại');
-      teamId = t.team || teamId;
-      if (!teamId && t.project) {
-        const proj = await ProjectModel.findById(t.project).lean();
-        teamId = proj?.team || teamId;
-      }
-    }
-
-    if (!teamId) return res.status(BAD_REQUEST).send('Không xác định được team cho insight');
-
-    const can = req.user?.isAdmin || (await userHasAnyRoleInTeam(req.user.id, teamId));
-    if (!can) return res.status(UNAUTHORIZED).send('Không có quyền tạo insight cho team này');
-
-    const doc = await AIInsightModel.create({
-      team: teamId,
-      task: task ? toId(task) : undefined,
-      kind,
-      message,
-      score: score != null ? Number(score) : undefined,
+    res.send({
+      analysis,
+      insight: { ...insight.toObject(), id: insight._id },
+      reused: false,
     });
-
-    await recordActivity({
-      team: teamId,
-      actor: req.user.id,
-      verb: 'ai_insight_created',
-      targetType: doc.task ? 'task' : 'team',
-      targetId: doc.task || teamId,
-      metadata: { insightId: doc._id, kind },
-    });
-
-    const populated = await AIInsightModel.findById(doc._id)
-      .populate('task', 'title status project team priority dueDate labels')
-      .lean();
-
-    res.status(201).send(populated);
   })
 );
 
-async function buildExplicitPatch(apply) {
-  if (!apply) return null;
-  const out = {};
-
-  if (apply.priority && ['low', 'normal', 'high', 'urgent'].includes(apply.priority)) {
-    out.priority = apply.priority;
-  }
-  if (apply.dueDate) {
-    const d = new Date(apply.dueDate);
-    if (!isNaN(d)) out.dueDate = d;
-  }
-  if (Array.isArray(apply.labelIds) && apply.labelIds.length) {
-    out.labelIds = apply.labelIds.filter(mongoose.isValidObjectId).map(String);
-  }
-  if (Array.isArray(apply.labelNames) && apply.labelNames.length) {
-    out.labelNames = apply.labelNames.map((s) => String(s).trim()).filter(Boolean);
-  }
-  return Object.keys(out).length ? out : null;
-}
-
-async function buildAutoPatchFromInsight(insight) {
-  const { kind, message = '' } = insight;
-  const out = {};
-
-  // ưu tiên parse JSON message
-  let parsed = null;
-  try {
-    parsed = JSON.parse(message);
-  } catch {}
-
-  if (kind === 'priority_suggestion') {
-    // 1) ưu tiên lấy từ parsed.autoApply / parsed.analysis
-    const p =
-      parsed?.autoApply?.priority ||
-      parsed?.analysis?.priority ||
-      null;
-
-    if (p && ['low', 'normal', 'high', 'urgent'].includes(p)) {
-      out.priority = p;
-    }
-
-    // 2) nếu AI gợi ý labelNames (vd risk)
-    if (Array.isArray(parsed?.autoApply?.labelNames) && parsed.autoApply.labelNames.length) {
-      out.labelNames = parsed.autoApply.labelNames;
-    }
-
-    // fallback nếu không parse được json thì mới regex (giữ backward compatible)
-    if (!out.priority) {
-      const m = /priority\s*=\s*(low|normal|high|urgent)/i.exec(message);
-      if (m) out.priority = m[1].toLowerCase();
-    }
-  }
-
-  if (kind === 'risk_warning') {
-    out.labelNames = [...(out.labelNames || []), 'risk'];
-  }
-
-  if (kind === 'timeline_prediction') {
-    const m = /(\d{4}-\d{2}-\d{2})/.exec(message);
-    if (m) out.dueDate = m[1];
-  }
-
-  if (kind === 'workload_balance') {
-    out.labelNames = [...(out.labelNames || []), 'workload'];
-  }
-
-  return Object.keys(out).length ? out : null;
-}
-
-router.post(
-  '/insights/:id/accept',
-  authMid,
-  handler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid insight id');
-
-    const insight = await AIInsightModel.findById(id);
-    if (!insight) return res.status(404).send('Insight không tồn tại');
-
-    if (!(await canManageInsight(req.user, insight))) {
-      return res.status(UNAUTHORIZED).send('Không có quyền accept insight này');
-    }
-
-    insight.acceptedBy = toId(req.user.id);
-    insight.acceptedAt = new Date();
-    await insight.save();
-
-    let appliedPatch = null;
-    let updatedTask = null;
-
-    if (insight.task) {
-      const task = await TaskModel.findById(insight.task).lean();
-      if (!task) return res.status(404).send('Task không tồn tại');
-
-      const explicit = await buildExplicitPatch(req.body?.apply);
-      const auto = explicit || (await buildAutoPatchFromInsight(insight));
-
-      if (auto && Object.keys(auto).length) {
-        if (auto.labelNames?.length) {
-          const labelIds = await upsertLabelsByNames({
-            teamId: insight.team,
-            projectId: task.project || null,
-            names: auto.labelNames,
-          });
-          auto.labelIds = [...new Set([...(auto.labelIds || []), ...labelIds.map(String)])];
-          delete auto.labelNames;
-        }
-
-        const update = {};
-        const metadata = {};
-
-        if (auto.priority) {
-          update.priority = auto.priority;
-          metadata.priority = auto.priority;
-        }
-        if (auto.dueDate) {
-          update.dueDate = new Date(auto.dueDate);
-          metadata.dueDate = update.dueDate;
-        }
-        if (auto.labelIds?.length) {
-          const current = (task.labels || []).map(String);
-          const merged = Array.from(new Set([...current, ...auto.labelIds.map(String)])).map(toId);
-          update.labels = merged;
-          metadata.labelIds = merged.map(String);
-        }
-
-        if (Object.keys(update).length) {
-          updatedTask = await TaskModel.findByIdAndUpdate(
-            task._id,
-            { $set: update },
-            { new: true }
-          ).lean();
-          appliedPatch = metadata;
-
-          await recordActivity({
-            team: insight.team,
-            actor: req.user.id,
-            verb: 'ai_insight_applied',
-            targetType: 'task',
-            targetId: task._id,
-            metadata: { insightId: insight._id, ...metadata },
-          });
-        }
-      }
-    }
-
-    await recordActivity({
-      team: insight.team,
-      actor: req.user.id,
-      verb: 'ai_insight_accepted',
-      targetType: insight.task ? 'task' : 'team',
-      targetId: insight.task || insight.team,
-      metadata: { insightId: insight._id, applied: !!appliedPatch },
-    });
-
-    const populated = await AIInsightModel.findById(insight._id)
-      .populate('acceptedBy', 'name email avatarUrl')
-      .populate('task', 'title status project team priority dueDate labels')
-      .lean();
-
-    res.send({ insight: populated, appliedPatch, task: updatedTask || null });
-  })
-);
-
-router.post(
-  '/insights/:id/dismiss',
-  authMid,
-  handler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid insight id');
-
-    const doc = await AIInsightModel.findById(id);
-    if (!doc) return res.status(404).send('Insight không tồn tại');
-
-    if (!(await canManageInsight(req.user, doc))) {
-      return res.status(UNAUTHORIZED).send('Không có quyền dismiss insight này');
-    }
-
-    doc.dismissedBy = toId(req.user.id);
-    doc.dismissedAt = new Date();
-    await doc.save();
-
-    await recordActivity({
-      team: doc.team,
-      actor: req.user.id,
-      verb: 'ai_insight_dismissed',
-      targetType: doc.task ? 'task' : 'team',
-      targetId: doc.task || doc.team,
-      metadata: { insightId: doc._id },
-    });
-
-    const populated = await AIInsightModel.findById(doc._id)
-      .populate('dismissedBy', 'name email avatarUrl')
-      .populate('task', 'title status project team priority dueDate labels')
-      .lean();
-
-    res.send(populated);
-  })
-);
-
-router.delete(
-  '/insights/:id',
-  authMid,
-  handler(async (req, res) => {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid insight id');
-
-    const doc = await AIInsightModel.findById(id).lean();
-    if (!doc) return res.status(404).send('Insight không tồn tại');
-
-    const can = await canManageInsight(req.user, doc);
-    if (!can) return res.status(UNAUTHORIZED).send('Không có quyền xoá insight này');
-
-    await AIInsightModel.deleteOne({ _id: id });
-
-    await recordActivity({
-      team: doc.team,
-      actor: req.user.id,
-      verb: 'ai_insight_deleted',
-      targetType: doc.task ? 'task' : 'team',
-      targetId: doc.task || doc.team,
-      metadata: { insightId: id },
-    });
-
-    res.send();
-  })
-);
-
-// GET /ai/status?team=...&project=...&limit=5
 router.get(
   '/status',
   authMid,
@@ -1263,16 +1007,61 @@ router.post(
     const buglist = String(req.body?.buglist || '').trim();
     if (!buglist) return res.status(BAD_REQUEST).send('Thiếu buglist');
 
-    // optional: context
     const context = req.body?.context || {};
 
     const out = await triageBuglist({
       buglist,
-      context,
-      todayISO: new Date().toISOString().slice(0, 10),
+      // nếu bạn muốn dùng context trong prompt thì sửa triageBuglist để nhận context
+      // hoặc map sang teamName/productArea/releaseDate ở đây
+      teamName: context?.teamName,
+      productArea: context?.productArea,
+      releaseDate: context?.releaseDate,
     });
 
-    res.send(out);
+    // ---- normalize items ----
+    const items = Array.isArray(out?.items) ? out.items : [];
+    const safeItems = items.map((it, idx) => ({
+      title: String(it?.title || '').trim(),
+      description: it?.description ? String(it.description) : '',
+      severity: ['S1', 'S2', 'S3', 'S4'].includes(it?.severity) ? it.severity : 'S4',
+      priority: ['urgent', 'high', 'normal', 'low'].includes(it?.priority) ? it.priority : 'normal',
+      order: Number.isFinite(Number(it?.order)) ? Number(it.order) : idx + 1,
+      confidence: Math.max(0, Math.min(1, Number(it?.confidence ?? 0))),
+      rationale: Array.isArray(it?.rationale) ? it.rationale.map(String).slice(0, 6) : [],
+      suggestedLabels: Array.isArray(it?.suggestedLabels) ? it.suggestedLabels.map(String).slice(0, 10) : [],
+    }));
+
+    // ---- compute summary from items (source of truth) ----
+    const bySeverity = { S1: 0, S2: 0, S3: 0, S4: 0 };
+    const byPriority = { urgent: 0, high: 0, normal: 0, low: 0 };
+
+    for (const it of safeItems) {
+      bySeverity[it.severity] += 1;
+      byPriority[it.priority] += 1;
+    }
+
+    // topRisks: ưu tiên item severity cao + confidence cao
+    const topRisks = safeItems
+      .slice()
+      .sort((a, b) => {
+        const sevRank = { S1: 4, S2: 3, S3: 2, S4: 1 };
+        const pa = sevRank[a.severity] || 1;
+        const pb = sevRank[b.severity] || 1;
+        if (pb !== pa) return pb - pa;
+        return (b.confidence || 0) - (a.confidence || 0);
+      })
+      .slice(0, 5)
+      .map((it) => `${it.severity}/${it.priority}: ${it.title}`);
+
+    res.send({
+      summary: {
+        total: safeItems.length,
+        bySeverity,
+        byPriority,
+        topRisks,
+      },
+      items: safeItems,
+    });
   })
 );
 export default router;
