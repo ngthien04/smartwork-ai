@@ -14,7 +14,6 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // nếu sau này bạn muốn tách theo team, set teamId ở đây
   const teamId = useMemo(() => undefined as string | undefined, []);
 
   const scrollToBottom = () => {
@@ -23,12 +22,10 @@ export function useChat() {
     });
   };
 
-  // load history khi mount
   useEffect(() => {
     (async () => {
       try {
         const history = await chatHistoryServices.getHistory(teamId ? { team: teamId } : undefined);
-        // đảm bảo createdAt luôn có
         const normalized = history.map((m: ChatMsg) => ({
           ...m,
           createdAt: m.createdAt || new Date().toISOString(),

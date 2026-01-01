@@ -32,6 +32,11 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons';
 import type { RcFile } from 'antd/es/upload/interface';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/vi';
+dayjs.extend(relativeTime);
+dayjs.locale('vi');
 
 import type { Attachment as TaskAttachment } from '@/types/attachment';
 import type { Subtask } from '@/types/subtask';
@@ -89,7 +94,7 @@ export default function TaskDetailPage() {
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<any | null>(null);
-
+  const [aiMeta, setAiMeta] = useState<{ analyzedAt?: string; reused?: boolean } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -225,6 +230,42 @@ export default function TaskDetailPage() {
     loadLabels();
   }, [project]);
 
+    useEffect(() => {
+    const run = async () => {
+      const id = task?.id || task?._id;
+      if (!id) return;
+
+      try {
+        setAiLoading(true);
+
+        // 1) lấy insight đã lưu
+        const latest = await aiServices.getLatestTaskPriorityInsight(id);
+        const insight = latest.data?.insight;
+
+        if (insight?.metadata?.analysis) {
+          setAiResult({ analysis: insight.metadata.analysis, insight });
+          setAiMeta({ analyzedAt: insight.createdAt, reused: true });
+          return;
+        }
+
+        // 2) chưa có => analyze (force=false)
+        const analyzed = await aiServices.analyzeTaskPriority(id, false);
+        setAiResult(analyzed.data);
+        setAiMeta({
+          analyzedAt: analyzed.data?.insight?.createdAt,
+          reused: Boolean(analyzed.data?.reused),
+        });
+      } catch (e: any) {
+        console.error(e);
+        message.error(e?.response?.data || 'AI phân tích thất bại');
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id, task?._id]);
 
   const taskLabelIds = useMemo(() => {
     const raw = (task as any)?.labels;
@@ -560,41 +601,23 @@ export default function TaskDetailPage() {
     });
   }, [activities]);
 
-  const handleAnalyzeWithAI = async () => {
-    if (!task?.id && !task?._id) return;
-    const id = task.id || task._id;
+  const handleReAnalyze = async () => {
+    const id = task?.id || task?._id;
+    if (!id) return;
+
     try {
       setAiLoading(true);
-      const res = await aiServices.analyzeTaskPriority(id);
+      const res = await aiServices.analyzeTaskPriority(id, true); // force=true
       setAiResult(res.data);
+      setAiMeta({ analyzedAt: res.data?.insight?.createdAt, reused: false });
+      message.success('Đã phân tích lại');
     } catch (e: any) {
       console.error(e);
-      message.error(e?.response?.data || 'AI phân tích thất bại');
+      message.error(e?.response?.data || 'Phân tích lại thất bại');
     } finally {
       setAiLoading(false);
     }
   };
-
-  const handleAcceptInsight = async () => {
-    const insightId = aiResult?.insight?.id || aiResult?.insight?._id;
-    if (!insightId) return;
-
-    try {
-      await aiServices.acceptInsight(insightId);
-
-      message.success('Đã áp dụng đề xuất AI');
-
-      const id = task.id || task._id;
-      const res = await taskServices.getById(id);
-      const t: any = res.data || res;
-      t.id = t.id || t._id;
-      setTask(t);
-    } catch (e: any) {
-      console.error(e);
-      message.error(e?.response?.data || 'Không áp dụng được đề xuất');
-    }
-  };
-
 
   if (!loading && !task) {
     return (
@@ -1393,7 +1416,6 @@ export default function TaskDetailPage() {
           </Card>
         </Col>
 
-        {/* RIGHT COLUMN */}
         <Col xs={24} lg={8}>
           <Space direction="vertical" size="large" className="w-full">
             <Card
@@ -1401,19 +1423,36 @@ export default function TaskDetailPage() {
               extra={<RobotOutlined />}
               actions={[
                 <Button
-                  key="analyze"
+                  key="reanalyze"
                   type="primary"
                   ghost
                   icon={<RobotOutlined />}
-                  onClick={handleAnalyzeWithAI}
+                  onClick={handleReAnalyze}
                   loading={aiLoading}
                 >
-                  Phân tích với AI
+                  Phân tích lại
                 </Button>,
-              ].filter(Boolean)}
+              ]}
             >
-              {aiResult ? (
+              {aiLoading && !aiResult ? (
+                <Alert type="info" showIcon message="AI đang tự động phân tích task..." />
+              ) : aiResult ? (
                 <Space direction="vertical" className="w-full" size={10}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={
+                      <Space wrap>
+                        <Text>
+                          Kết quả phân tích lúc{' '}
+                          <b>{dayjs(aiMeta?.analyzedAt || aiResult?.insight?.createdAt).format('DD/MM/YYYY HH:mm')}</b>
+                        </Text>
+                        <Tag>{dayjs(aiMeta?.analyzedAt || aiResult?.insight?.createdAt).fromNow()}</Tag>
+                        {aiMeta?.reused ? <Tag color="blue">Cached</Tag> : <Tag color="green">Fresh</Tag>}
+                      </Space>
+                    }
+                  />
+
                   <div>
                     <Text strong>Priority đề xuất:</Text>{' '}
                     <Tag color={aiResult.analysis?.priority === 'urgent' ? 'red' : 'orange'}>
@@ -1453,10 +1492,14 @@ export default function TaskDetailPage() {
                   </div>
                 </Space>
               ) : (
-                <Alert type="info" showIcon message="Bấm 'Phân tích với AI' để xem đề xuất ưu tiên & rủi ro." />
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Chưa có AI insight."
+                  description="AI sẽ tự phân tích khi bạn mở task. Nếu vẫn chưa có, bấm 'Phân tích lại'."
+                />
               )}
             </Card>
-
             {/* CHECKLIST = subtasks view khác */}
             <Card title="Checklist báo cáo">
               <List

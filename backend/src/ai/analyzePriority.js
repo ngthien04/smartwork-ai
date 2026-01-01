@@ -1,9 +1,5 @@
 import { json } from './openai.service.js';
 
-/**
- * Priority & Risk analysis for a software task.
- * Goal: stable JSON output, low hallucination, actionable suggestions.
- */
 export async function analyzeTaskPriority({
   title,
   description = '',
@@ -15,14 +11,16 @@ export async function analyzeTaskPriority({
   labelNames = [],
 }) {
   const system = `
-Bạn là hệ thống phân tích ưu tiên & rủi ro cho task trong ứng dụng quản lý công việc phần mềm.
+Bạn là hệ thống phân tích ưu tiên & rủi ro cho task trong ứng dụng quản lý công việc.
 
-Nguyên tắc:
-- CHỈ dựa trên dữ liệu được cung cấp trong input. Không suy đoán bừa về bối cảnh, khách hàng, deadline, team.
-- Luôn trả về JSON đúng schema. Không thêm text ngoài JSON.
-- Nếu dữ liệu thiếu (ví dụ không có dueDate / mô tả quá ít), hãy phản ánh bằng confidence thấp và reasons nêu rõ thiếu dữ liệu.
-- Ưu tiên theo chuẩn: low | normal | high | urgent.
-- riskScore trong [0,1].
+QUY TẮC BẮT BUỘC:
+- CHỈ dựa trên dữ liệu input, không suy đoán thêm bối cảnh.
+- LUÔN trả về JSON đúng schema, KHÔNG thêm bất kỳ text nào ngoài JSON.
+- NGÔN NGỮ: Toàn bộ "reasons" và "recommendedActions" PHẢI viết bằng TIẾNG VIỆT (ngắn gọn, rõ ràng).
+- Dù title/description là tiếng Anh, output vẫn phải là tiếng Việt.
+- Nếu thiếu dữ liệu (không dueDate / mô tả quá ít), phản ánh bằng confidence thấp và reasons nêu rõ thiếu gì.
+- priority: low | normal | high | urgent
+- riskScore, confidence trong [0,1]
 `.trim();
 
   const user = `
@@ -41,16 +39,13 @@ YÊU CẦU:
 - dueDate (gần hạn / quá hạn)
 - status (blocked/review/in_progress/todo/backlog/done)
 - độ rõ ràng của mô tả (thiếu yêu cầu => rủi ro)
-- dấu hiệu khẩn cấp trong title/description (urgent/hotfix/production/down/bug critical)
+- dấu hiệu khẩn cấp (urgent/hotfix/production/down/bug critical)
 - assigneeCount (0 assignee => rủi ro trôi việc)
 - labelNames (risk/bug/security/incident => tăng rủi ro)
 
-2) Trả về:
-- priority: low|normal|high|urgent
-- riskScore: number 0..1
-- confidence: 0..1 (mức chắc chắn từ dữ liệu hiện có)
-- reasons: 2..4 gạch đầu dòng ngắn, cụ thể, không nói chung chung
-- recommendedActions: 2..5 hành động cụ thể (vd: "gán assignee", "tách subtasks", "đặt deadline", "làm rõ acceptance criteria", "đổi status blocked + ghi blocker")
+2) Output tiếng Việt:
+- reasons: 2..4 gạch đầu dòng NGẮN, CỤ THỂ, TIẾNG VIỆT
+- recommendedActions: 2..5 hành động CỤ THỂ, TIẾNG VIỆT (vd: "Gán assignee", "Tách subtasks", "Bổ sung acceptance criteria"...)
 
 Schema JSON:
 {
