@@ -24,7 +24,8 @@ import {
   FolderOpenOutlined,
   EditOutlined,
   DeleteOutlined,
-  InboxOutlined,          
+  InboxOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 
 import projectServices, { type ProjectListParams } from '@/services/projectService';
@@ -392,7 +393,14 @@ export default function ProjectListPage() {
                 <Space direction="vertical" className="w-full">
                   <div className="flex items-center justify-between">
                     <div>
-                      <Text strong>{project.name}</Text>
+                      <div className="flex items-center gap-2">
+                        <Text strong>{project.name}</Text>
+                        {team && team.plan === 'PREMIUM' && team.planExpiredAt && new Date(team.planExpiredAt) > new Date() && (
+                          <Tag color="gold" icon={<CrownOutlined />} style={{ margin: 0 }}>
+                            Premium
+                          </Tag>
+                        )}
+                      </div>
                       <div className="text-xs text-gray-500">
                         {project.description}
                       </div>

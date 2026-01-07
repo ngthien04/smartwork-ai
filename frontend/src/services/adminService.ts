@@ -19,6 +19,41 @@ export interface PaginatedResponse<T> {
   items: T[];
 }
 
+export interface AdminPlanStatsResponse {
+  planStats: {
+    totalTeams: number;
+    freeTeams: number;
+    premiumTeams: number;
+    activePremiumTeams: number;
+  };
+  revenueStats: {
+    totalRevenue: number;
+    totalPayments: number;
+    successPayments: number;
+    failedPayments: number;
+    pendingPayments: number;
+  };
+}
+
+export interface AdminPayment {
+  _id: string;
+  team?: {
+    _id: string;
+    name: string;
+    slug: string;
+    plan?: 'FREE' | 'PREMIUM';
+    planExpiredAt?: string;
+  } | null;
+  amount: number;
+  currency: string;
+  provider: string;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  plan: 'PREMIUM';
+  transactionId?: string;
+  createdAt?: string;
+  paidAt?: string;
+}
+
 const adminService = {
   listUsers(params?: { page?: number; limit?: number; q?: string }) {
     return api.get<PaginatedResponse<AdminUser>>('/admin/users', { params });
@@ -39,8 +74,23 @@ const adminService = {
   getTeamMembers(teamId: string) {
     return api.get<TeamMember[]>(`/teams/${teamId}/members`);
   },
+
+  // ---------- PLAN MANAGEMENT ----------
+  getPlanSummary() {
+    return api.get<AdminPlanStatsResponse>('/admin/plans/summary');
+  },
+
+  listPlanTeams(params?: { page?: number; limit?: number; plan?: 'FREE' | 'PREMIUM' }) {
+    return api.get<PaginatedResponse<Team>>('/admin/plans/teams', { params });
+  },
+
+  listPlanPayments(params?: {
+    page?: number;
+    limit?: number;
+    status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  }) {
+    return api.get<PaginatedResponse<AdminPayment>>('/admin/plans/payments', { params });
+  },
 };
 
 export default adminService;
-
-

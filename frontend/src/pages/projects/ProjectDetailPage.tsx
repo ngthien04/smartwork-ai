@@ -24,7 +24,7 @@ import {
   Popconfirm,
   Spin,
 } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, CrownOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 import projectServices from '@/services/projectService';
@@ -54,6 +54,7 @@ export default function ProjectDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any | null>(null);
+  const [team, setTeam] = useState<any | null>(null);
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -204,12 +205,15 @@ export default function ProjectDetailPage() {
 
         setLabelsLoading(true);
 
-        const [membersRes, taskRes, overviewRes, labelRes] = await Promise.all([
+        const [membersRes, teamRes, taskRes, overviewRes, labelRes] = await Promise.all([
           teamService.getMembers(tId),
+          teamService.getById(tId),
           taskServices.list({ team: tId, project: proj._id || projectId, limit: 100 }),
           taskServices.getOverview({ team: tId, project: proj._id || projectId }),
           labelServices.list({ team: tId, project: proj._id || projectId, limit: 200 }),
         ]);
+
+        setTeam(teamRes.data);
 
         setTeamMembers(membersRes.data || []);
         setTasks(normalizeTaskList(taskRes.data));

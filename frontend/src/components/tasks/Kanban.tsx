@@ -174,7 +174,7 @@ export default function Kanban({
     const config = statusConfig[status];
 
     return (
-      <div className="flex-1 min-w-0">
+      <div style={{ minWidth: '280px', width: '280px', flexShrink: 0 }}>
         <div className="bg-gray-50 rounded-lg p-4 h-full flex flex-col">
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center space-x-2">
@@ -209,13 +209,15 @@ export default function Kanban({
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex space-x-4 h-full">
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', width: '100%' }}>
+        <div className="flex space-x-4 h-full" style={{ minWidth: 'max-content', paddingBottom: '8px' }}>
         {renderColumn('backlog')}
         {renderColumn('todo')}
         {renderColumn('in_progress')}
         {renderColumn('review')}
         {renderColumn('blocked')}
         {renderColumn('done')}
+        </div>
       </div>
     </DragDropContext>
   );

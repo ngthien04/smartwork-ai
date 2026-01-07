@@ -42,38 +42,6 @@ router.post(
   })
 );
 
-router.post(
-  '/register',
-  handler(async (req, res) => {
-    const { name, email, password } = req.body || {};
-    if (!name || !email || !password) {
-      return res.status(BAD_REQUEST).send('Thiếu name/email/password');
-    }
-
-    const emailNorm = String(email).toLowerCase().trim();
-    const existed = await UserModel.findOne({ email: emailNorm });
-    if (existed) {
-      return res.status(BAD_REQUEST).send('Email đã tồn tại');
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    const user = await UserModel.create({
-      name,
-      email: emailNorm,
-      passwordHash,
-      roles: [
-        {
-          team: null,       
-          role: 'member',   
-        },
-      ],
-    });
-
-    return res.send(generateTokenResponse(user));
-  })
-);
-
 router.get(
   '/getById/:userId',
   authMid,

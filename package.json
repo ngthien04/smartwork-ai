@@ -18,6 +18,7 @@
   "homepage": "https://github.com/ngthien04/smartwork-ai#readme",
   "description": "",
   "dependencies": {
+    "dayjs": "^1.11.19",
     "express": "^5.1.0"
   },
   "devDependencies": {

@@ -9,10 +9,10 @@ const NotificationSchema = new Schema(
       enum: [
         "task_assigned",
         "task_due",
+        "task_deadline_soon",
         "comment_mention",
         "sprint_status",
         "ai_alert",
-
         "task_comment",
         "task_updated",
         "task_status_changed",
@@ -28,5 +28,11 @@ const NotificationSchema = new Schema(
   },
   { timestamps: true }
 );
+NotificationSchema.index(
+  { user: 1, type: 1, "payload.taskId": 1, "payload.noticeDate": 1 },
+  { unique: true, partialFilterExpression: { type: "task_deadline_soon" } }
+);
 
 export const NotificationModel = model("notification", NotificationSchema);
+
+

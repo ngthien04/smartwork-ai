@@ -7,10 +7,11 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import type { RootState } from '@/types';
-import { setThemeMode } from '@/store/slices/uiSlice';
+// import { setThemeMode } from '@/store/slices/uiSlice'; // Commented out - dark mode disabled
 import { logout, setCredentials } from '@/store/slices/authSlice';
 import { authService } from '@/services/authService';
 import { ROUTES } from '@/routes/path';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -19,16 +20,16 @@ export default function SettingsPage() {
   const { t, i18n } = useTranslation();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { themeMode } = useSelector((state: RootState) => state.ui);
+  // const { themeMode } = useSelector((state: RootState) => state.ui); // Commented out - dark mode disabled
   const { user } = useSelector((state: RootState) => state.auth);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
   const [changePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
   const [editForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
-  const handleThemeChange = (checked: boolean) => {
-    dispatch(setThemeMode(checked ? 'dark' : 'light'));
-  };
+  // const handleThemeChange = (checked: boolean) => {
+  //   dispatch(setThemeMode(checked ? 'dark' : 'light'));
+  // };
 
   const handleLanguageChange = (value: string) => {
     i18n.changeLanguage(value);
@@ -120,7 +121,8 @@ export default function SettingsPage() {
         <Col xs={24} lg={12}>
           <Card title="Giao diện" className="h-full">
             <Space direction="vertical" className="w-full" size="large">
-              <div className="flex justify-between items-center">
+              {/* Dark mode - Commented out due to issues */}
+              {/* <div className="flex justify-between items-center">
                 <div>
                   <Text strong>Chế độ tối</Text>
                   <div className="text-sm text-gray-500">
@@ -133,7 +135,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <Divider />
+              <Divider /> */}
 
               <div className="flex justify-between items-center">
                 <div>
@@ -160,9 +162,7 @@ export default function SettingsPage() {
           <Card title="Tài khoản" className="h-full">
             <Space direction="vertical" className="w-full" size="large">
               <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-                  <UserOutlined className="text-xl text-gray-500" />
-                </div>
+                <UserAvatar user={user} size={48} />
                 <div>
                   <Text strong className="block">{user?.name || 'User'}</Text>
                   <Text type="secondary" className="text-sm">{user?.email}</Text>
@@ -189,22 +189,6 @@ export default function SettingsPage() {
                 >
                   Đổi mật khẩu
                 </Button>
-                
-                <Button
-                  type="text"
-                  className="w-full text-left justify-start"
-                  icon={<GlobalOutlined />}
-                >
-                  Đồng bộ với Google Calendar
-                </Button>
-                
-                <Button
-                  type="text"
-                  className="w-full text-left justify-start"
-                  icon={<BulbOutlined />}
-                >
-                  Tùy chỉnh AI Assistant
-                </Button>
               </div>
 
               <Divider />
@@ -218,61 +202,6 @@ export default function SettingsPage() {
                 {t('settings.logout')}
               </Button>
             </Space>
-          </Card>
-        </Col>
-
-        {/* Notifications Settings */}
-        <Col xs={24}>
-          <Card title="Thông báo">
-            <Row gutter={[24, 24]}>
-              <Col xs={24} sm={12}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <Text strong>Thông báo email</Text>
-                    <div className="text-sm text-gray-500">
-                      Nhận thông báo qua email
-                    </div>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </Col>
-              
-              <Col xs={24} sm={12}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <Text strong>Thông báo push</Text>
-                    <div className="text-sm text-gray-500">
-                      Nhận thông báo trên trình duyệt
-                    </div>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </Col>
-              
-              <Col xs={24} sm={12}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <Text strong>Nhắc nhở deadline</Text>
-                    <div className="text-sm text-gray-500">
-                      Nhắc nhở khi sắp đến hạn
-                    </div>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </Col>
-              
-              <Col xs={24} sm={12}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <Text strong>Thông báo AI</Text>
-                    <div className="text-sm text-gray-500">
-                      Thông báo từ AI Assistant
-                    </div>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-              </Col>
-            </Row>
           </Card>
         </Col>
       </Row>

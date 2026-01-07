@@ -6,12 +6,6 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface RegisterRequest {
-  name: string;
-  email: string;
-  password: string;
-  address?: string;
-}
 
 export interface AuthResponse {
   id: string;
@@ -60,14 +54,6 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
-export interface ForgotPasswordRequest {
-  email: string;
-}
-
-export interface ResetPasswordRequest {
-  token: string;
-  newPassword: string;
-}
 
 export const authService = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
@@ -75,13 +61,6 @@ export const authService = {
     return mapBackendAuthResponse(data);
   },
 
-  
-  register: async (userData: RegisterRequest): Promise<AuthResponse> => {
-    const { data } = await fetcher.post('/users/register', userData);
-    return mapBackendAuthResponse(data);
-  },
-
-  
   getMe: async (): Promise<User> => {
     const { data } = await fetcher.get<User>('/users/me');
     return data;
@@ -99,17 +78,6 @@ export const authService = {
     return mapBackendAuthResponse(data);
   },
 
-  
-  forgotPassword: async (emailData: ForgotPasswordRequest): Promise<void> => {
-    
-    throw new Error('API chưa được triển khai');
-  },
-
-  
-  resetPassword: async (resetData: ResetPasswordRequest): Promise<void> => {
-    
-    throw new Error('API chưa được triển khai');
-  },
 
   googleLogin: async (credential: string): Promise<AuthResponse> => {
     const { data } = await fetcher.post('/users/google-login', { credential });

@@ -1,19 +1,20 @@
-import { Router } from 'express';
-import mongoose from 'mongoose';
-import authMid from '../middleware/auth.mid.js';
-import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
+import { Router } from "express";
+import mongoose from "mongoose";
+import authMid from "../middleware/auth.mid.js";
+import { BAD_REQUEST, UNAUTHORIZED } from "../constants/httpStatus.js";
 
-import { TaskModel } from '../models/task.js';
-import { SubtaskModel } from '../models/subtask.js';
-import { CommentModel } from '../models/comment.js';
-import { LabelModel } from '../models/label.js';
-import { AttachmentModel } from '../models/attachment.js';
-import { ActivityModel } from '../models/activity.js';
-import { UserModel } from '../models/users.js';
-import { NotificationModel } from '../models/notification.js';
+import { TaskModel } from "../models/task.js";
+import { SubtaskModel } from "../models/subtask.js";
+import { CommentModel } from "../models/comment.js";
+import { LabelModel } from "../models/label.js";
+import { AttachmentModel } from "../models/attachment.js";
+import { ActivityModel } from "../models/activity.js";
+import { UserModel } from "../models/users.js";
+import { NotificationModel } from "../models/notification.js";
+import { TeamModel } from "../models/team.js";
 
-import multer from 'multer';
-import { configCloudinary } from '../config/cloudinary.config.js';
+import multer from "multer";
+import { configCloudinary } from "../config/cloudinary.config.js";
 
 const cloudinary = configCloudinary();
 const isValidId = (id) => mongoose.isValidObjectId(id);
@@ -21,21 +22,20 @@ const isValidId = (id) => mongoose.isValidObjectId(id);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 20 * 1024 * 1024, 
+    fileSize: 20 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
     const ok =
       /^image\//.test(file.mimetype) ||
-      file.mimetype === 'application/pdf' ||
-      file.mimetype === 'application/octet-stream';
-    cb(ok ? null : new Error('Unsupported file type'), ok);
+      file.mimetype === "application/pdf" ||
+      file.mimetype === "application/octet-stream";
+    cb(ok ? null : new Error("Unsupported file type"), ok);
   },
 });
 
-
 function uploadToCloudinary(
   buffer,
-  { folder, filename, resource_type = 'auto' } = {}
+  { folder, filename, resource_type = "auto" } = {}
 ) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -47,21 +47,18 @@ function uploadToCloudinary(
       (err, result) => {
         if (err) return reject(err);
         resolve(result);
-      },
+      }
     );
     stream.end(buffer);
   });
 }
-
-
-
 
 async function createNotificationsForUsers(userIds, { type, payload }) {
   if (!Array.isArray(userIds) || !userIds.length) return;
 
   const docs = userIds.map((uid) => ({
     user: new mongoose.Types.ObjectId(String(uid)),
-    channel: 'web',
+    channel: "web",
     type,
     payload: payload ?? {},
   }));
@@ -69,17 +66,16 @@ async function createNotificationsForUsers(userIds, { type, payload }) {
   try {
     await NotificationModel.insertMany(docs, { ordered: false });
   } catch (e) {
-    console.warn('[notification insert error]', e?.message || e);
+    console.warn("[notification insert error]", e?.message || e);
   }
 }
-
 
 function getTaskParticipantUserIds(task) {
   const ids = new Set();
 
   if (Array.isArray(task.assignees)) {
     for (const u of task.assignees) {
-      const id = typeof u === 'object' ? u._id : u;
+      const id = typeof u === "object" ? u._id : u;
       if (id) {
         ids.add(String(id));
       }
@@ -92,7 +88,6 @@ function getTaskParticipantUserIds(task) {
 
   return Array.from(ids);
 }
-
 
 async function notifyTaskParticipants(task, type, extraPayload = {}) {
   const participantIds = getTaskParticipantUserIds(task);
@@ -108,20 +103,49 @@ async function notifyTaskParticipants(task, type, extraPayload = {}) {
       },
     });
   } catch (e) {
-    console.warn('[notifyTaskParticipants error]', e?.message || e);
+    console.warn("[notifyTaskParticipants error]", e?.message || e);
   }
 }
 
+async function ensureTeamUsableForWork(teamId, userId) {
+  const teamDoc = await TeamModel.findById(teamId);
+  if (!teamDoc || teamDoc.isDeleted) throw new Error("TEAM_NOT_FOUND");
 
+  // Hết hạn PREMIUM -> hạ về FREE
+  if (teamDoc.plan === "PREMIUM" && teamDoc.planExpiredAt) {
+    const now = new Date();
+    const expiredAt = new Date(teamDoc.planExpiredAt);
+    if (expiredAt <= now) {
+      teamDoc.plan = "FREE";
+      teamDoc.planExpiredAt = undefined;
+      await teamDoc.save();
+    }
+  }
+
+  const isMember = teamDoc.members?.some((m) => String(m.user) === String(userId));
+  if (!isMember) throw new Error("NOT_TEAM_MEMBER");
+
+  // FREE và vượt quá 3 thành viên => chặn tạo thêm task/subtask
+  if (teamDoc.plan === "FREE") {
+    const memberCount = teamDoc.members?.length || 0;
+    if (memberCount > 3) {
+      const err = new Error("FREE_MEMBER_LIMIT_EXCEEDED");
+      err.name = "FREE_MEMBER_LIMIT_EXCEEDED";
+      // @ts-ignore
+      err.team = teamDoc;
+      throw err;
+    }
+  }
+
+  return teamDoc;
+}
 
 const router = Router();
-const handler =
-  (fn) =>
-  (req, res, next) =>
-    Promise.resolve(fn(req, res, next)).catch(next);
+const handler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
 
 function toObjectId(id) {
-  return typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id;
+  return typeof id === "string" ? new mongoose.Types.ObjectId(id) : id;
 }
 
 async function recordActivity({
@@ -133,15 +157,19 @@ async function recordActivity({
   metadata,
 }) {
   try {
-    await ActivityModel.create({ team, actor, verb, targetType, targetId, metadata });
+    await ActivityModel.create({
+      team,
+      actor,
+      verb,
+      targetType,
+      targetId,
+      metadata,
+    });
   } catch {}
 }
 
-
-
-
 router.get(
-  '/',
+  "/",
   authMid,
   handler(async (req, res) => {
     const {
@@ -154,14 +182,13 @@ router.get(
       page = 1,
       limit = 20,
       size,
-      sort = '-createdAt',
-      includeDeleted = 'false',
+      sort = "-createdAt",
+      includeDeleted = "false",
       team: teamQuery,
     } = req.query;
 
     const filter = {};
 
-    
     const user = await UserModel.findById(req.user.id, {
       roles: 1,
       isAdmin: 1,
@@ -173,24 +200,21 @@ router.get(
 
     let team = teamQuery;
 
-    
     if (team) {
       const requestedTeamId = toObjectId(team);
 
       if (!user?.isAdmin) {
         const canAccess = teamIds.some(
-          (tId) => String(tId) === String(requestedTeamId),
+          (tId) => String(tId) === String(requestedTeamId)
         );
         if (!canAccess) {
-          return res.status(UNAUTHORIZED).send('Không có quyền xem team này');
+          return res.status(UNAUTHORIZED).send("Không có quyền xem team này");
         }
       }
 
       filter.team = requestedTeamId;
     } else {
-      
       if (!user?.isAdmin) {
-        
         if (!teamIds.length) {
           return res.send({
             page: Number(page) || 1,
@@ -202,15 +226,14 @@ router.get(
 
         filter.team = { $in: teamIds };
       }
-      
     }
 
     if (project) filter.project = toObjectId(project);
     if (sprint) filter.sprint = toObjectId(sprint);
     if (assignee) filter.assignees = toObjectId(assignee);
-    if (status) filter.status = { $in: String(status).split(',') };
-    if (priority) filter.priority = { $in: String(priority).split(',') };
-    if (includeDeleted !== 'true') filter.isDeleted = { $ne: true };
+    if (status) filter.status = { $in: String(status).split(",") };
+    if (priority) filter.priority = { $in: String(priority).split(",") };
+    if (includeDeleted !== "true") filter.isDeleted = { $ne: true };
 
     if (q) {
       filter.$text = { $search: q };
@@ -225,10 +248,10 @@ router.get(
         .sort(sort)
         .skip(skip)
         .limit(limitNum)
-        .populate('project', 'name key')
-        .populate('sprint', 'name status startDate endDate')
-        .populate('assignees', 'name email avatarUrl')
-        .populate('labels')
+        .populate("project", "name key")
+        .populate("sprint", "name status startDate endDate")
+        .populate("assignees", "name email avatarUrl")
+        .populate("labels")
         .lean(),
       TaskModel.countDocuments(filter),
     ]);
@@ -239,42 +262,108 @@ router.get(
       total,
       items,
     });
-  }),
+  })
 );
 
+router.get(
+  "/deadlines",
+  authMid,
+  handler(async (req, res) => {
+    const from = req.query.from ? new Date(String(req.query.from)) : null;
+    const to = req.query.to ? new Date(String(req.query.to)) : null;
+    if (!from || !to || isNaN(from) || isNaN(to)) {
+      return res.status(400).send("Invalid from/to");
+    }
 
+    // lấy teamIds giống logic ở GET /
+    const user = await UserModel.findById(req.user.id, {
+      roles: 1,
+      isAdmin: 1,
+    }).lean();
 
+    const teamIds = (user?.roles || [])
+      .map((r) => r.team)
+      .filter(Boolean)
+      .map((id) => toObjectId(id));
+
+    const teamQuery = req.query.team;
+    const filter = {
+      isDeleted: { $ne: true },
+      dueDate: { $exists: true, $gte: from, $lte: to },
+    };
+
+    if (teamQuery) {
+      const requestedTeamId = toObjectId(teamQuery);
+      if (!user?.isAdmin) {
+        const canAccess = teamIds.some(
+          (tId) => String(tId) === String(requestedTeamId)
+        );
+        if (!canAccess)
+          return res.status(UNAUTHORIZED).send("Không có quyền xem team này");
+      }
+      filter.team = requestedTeamId;
+    } else {
+      if (!user?.isAdmin) {
+        if (!teamIds.length) return res.send([]);
+        filter.team = { $in: teamIds };
+      }
+    }
+
+    const tasks = await TaskModel.find(filter, {
+      title: 1,
+      dueDate: 1,
+      priority: 1,
+      status: 1,
+      project: 1,
+      team: 1,
+    })
+      .populate("project", "name")
+      .populate("team", "name")
+      .lean();
+
+    res.send(
+      tasks.map((t) => ({
+        id: String(t._id),
+        title: t.title,
+        dueDate: t.dueDate,
+        priority: t.priority,
+        status: t.status,
+        projectName: t.project?.name || "",
+        teamName: t.team?.name || "",
+      }))
+    );
+  })
+);
 
 router.get(
-  '/:taskId',
+  "/:taskId",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
 
     const task = await TaskModel.findById(taskId)
-      .populate('assignees', 'name email avatarUrl')
-      .populate('reporter', 'name email avatarUrl')
-      .populate('labels')
+      .populate("assignees", "name email avatarUrl")
+      .populate("reporter", "name email avatarUrl")
+      .populate("labels")
       .populate({
-        path: 'attachments',
+        path: "attachments",
         populate: [
           {
-            path: 'subtask',
-            select: 'title',
+            path: "subtask",
+            select: "title",
           },
           {
-            path: 'uploadedBy',
-            select: 'name email avatarUrl',
+            path: "uploadedBy",
+            select: "name email avatarUrl",
           },
         ],
       })
       .lean();
 
     if (!task || task.isDeleted) {
-      return res.status(404).send('Task không tồn tại');
+      return res.status(404).send("Task không tồn tại");
     }
 
-    
     if (!req.user?.isAdmin) {
       const user = await UserModel.findById(req.user.id, { roles: 1 }).lean();
       const teamIds = (user?.roles || [])
@@ -284,20 +373,16 @@ router.get(
       if (!teamIds.includes(String(task.team))) {
         return res
           .status(UNAUTHORIZED)
-          .send('Không có quyền truy cập task này');
+          .send("Không có quyền truy cập task này");
       }
     }
 
     res.send(task);
-  }),
+  })
 );
 
-
-
-
-
 router.post(
-  '/',
+  "/",
   authMid,
   handler(async (req, res) => {
     const {
@@ -306,9 +391,9 @@ router.post(
       sprint,
       title,
       description,
-      type = 'task',
-      status = 'todo',
-      priority = 'normal',
+      type = "task",
+      status = "todo",
+      priority = "normal",
       assignees = [],
       dueDate,
       startDate,
@@ -317,40 +402,51 @@ router.post(
     } = req.body || {};
 
     if (!team || !title)
-      return res.status(BAD_REQUEST).send('Thiếu team/title');
+      return res.status(BAD_REQUEST).send("Thiếu team/title");
 
-    
     let rawLabels = req.body?.labels ?? [];
 
-    
-    if (typeof rawLabels === 'string') {
-      
+    // Validate team plan & member limit before tạo task
+    try {
+      await ensureTeamUsableForWork(team, req.user.id);
+    } catch (e) {
+      if (e?.message === "TEAM_NOT_FOUND") {
+        return res.status(404).send("Team không tồn tại");
+      }
+      if (e?.message === "NOT_TEAM_MEMBER") {
+        return res.status(UNAUTHORIZED).send("Bạn không thuộc team này");
+      }
+      if (e?.name === "FREE_MEMBER_LIMIT_EXCEEDED") {
+        return res
+          .status(BAD_REQUEST)
+          .send("Team gói FREE chỉ cho phép tối đa 3 thành viên. Vui lòng xoá bớt hoặc nâng cấp PREMIUM để tạo task.");
+      }
+      throw e;
+    }
+
+    if (typeof rawLabels === "string") {
       try {
         const parsed = JSON.parse(rawLabels);
         rawLabels = parsed;
       } catch {
-        
         rawLabels = rawLabels
-          .replace(/[\[\]'"]/g, '') 
+          .replace(/[\[\]'"]/g, "")
           .split(/[, ]+/)
           .filter(Boolean);
       }
     }
 
-    
     if (!Array.isArray(rawLabels)) {
       rawLabels = [rawLabels];
     }
 
-    
     const labels = rawLabels
       .map((v) => String(v).trim())
-      .filter((id) => mongoose.isValidObjectId(id))        
+      .filter((id) => mongoose.isValidObjectId(id))
       .map((id) => new mongoose.Types.ObjectId(id));
-    
-    console.log('Labels to save:', labels);
 
-    
+    console.log("Labels to save:", labels);
+
     const doc = await TaskModel.create({
       team,
       project,
@@ -372,21 +468,20 @@ router.post(
     await recordActivity({
       team: doc.team,
       actor: req.user.id,
-      verb: 'created',
-      targetType: 'task',
+      verb: "created",
+      targetType: "task",
       targetId: doc._id,
       metadata: { title: doc.title },
     });
 
-    
     try {
       const assigneeIds = (assignees || [])
-        .map((u) => (typeof u === 'object' ? u._id : u))
+        .map((u) => (typeof u === "object" ? u._id : u))
         .filter((id) => id);
 
       if (assigneeIds.length) {
         await createNotificationsForUsers(assigneeIds, {
-          type: 'task_assigned',
+          type: "task_assigned",
           payload: {
             taskId: doc._id,
             taskTitle: doc.title,
@@ -397,110 +492,97 @@ router.post(
         });
       }
     } catch (e) {
-      console.warn('[task created noti error]', e?.message || e);
+      console.warn("[task created noti error]", e?.message || e);
     }
 
     res.status(201).send(doc);
-  }),
+  })
 );
 
-
-
-
-
 router.put(
-  '/:taskId',
+  "/:taskId",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
 
     const allowed = [
-      'title',
-      'description',
-      'type',
-      'status',
-      'priority',
-      'project',
-      'sprint',
-      'assignees',
-      'labels',
-      'dueDate',
-      'startDate',
-      'estimate',
-      'timeSpent',
-      'storyPoints',
-      'ai',
+      "title",
+      "description",
+      "type",
+      "status",
+      "priority",
+      "project",
+      "sprint",
+      "assignees",
+      "labels",
+      "dueDate",
+      "startDate",
+      "estimate",
+      "timeSpent",
+      "storyPoints",
+      "ai",
     ];
 
     const updates = {};
     for (const k of allowed) {
-      if (typeof req.body?.[k] !== 'undefined') updates[k] = req.body[k];
+      if (typeof req.body?.[k] !== "undefined") updates[k] = req.body[k];
     }
 
     const before = await TaskModel.findById(taskId);
     if (!before || before.isDeleted)
-      return res.status(404).send('Task không tồn tại');
+      return res.status(404).send("Task không tồn tại");
 
     await TaskModel.findByIdAndUpdate(taskId, updates);
 
     await recordActivity({
       team: before.team,
       actor: req.user.id,
-      verb: 'updated',
-      targetType: 'task',
+      verb: "updated",
+      targetType: "task",
       targetId: before._id,
       metadata: { updates },
     });
 
     const after = await TaskModel.findById(taskId).lean();
 
-    
-    await notifyTaskParticipants(after, 'task_updated', { updates });
+    await notifyTaskParticipants(after, "task_updated", { updates });
 
     res.send(after);
-  }),
+  })
 );
 
-
-
-
-
 router.put(
-  '/:taskId/status',
+  "/:taskId/status",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
     const { status } = req.body || {};
-    if (!status) return res.status(BAD_REQUEST).send('Missing status');
+    if (!status) return res.status(BAD_REQUEST).send("Missing status");
 
     const t = await TaskModel.findByIdAndUpdate(
       taskId,
       { status },
-      { new: true },
+      { new: true }
     );
-    if (!t) return res.status(404).send('Task không tồn tại');
+    if (!t) return res.status(404).send("Task không tồn tại");
 
     await recordActivity({
       team: t.team,
       actor: req.user.id,
-      verb: 'moved',
-      targetType: 'task',
+      verb: "moved",
+      targetType: "task",
       targetId: t._id,
       metadata: { status },
     });
 
-    await notifyTaskParticipants(t, 'task_status_changed', { status });
+    await notifyTaskParticipants(t, "task_status_changed", { status });
 
     res.send(t);
-  }),
+  })
 );
 
-
-
-
-
 router.put(
-  '/:taskId/assign',
+  "/:taskId/assign",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
@@ -509,40 +591,36 @@ router.put(
     const t = await TaskModel.findByIdAndUpdate(
       taskId,
       { assignees },
-      { new: true },
+      { new: true }
     );
-    if (!t) return res.status(404).send('Task không tồn tại');
+    if (!t) return res.status(404).send("Task không tồn tại");
 
     await recordActivity({
       team: t.team,
       actor: req.user.id,
-      verb: 'assigned',
-      targetType: 'task',
+      verb: "assigned",
+      targetType: "task",
       targetId: t._id,
       metadata: { assignees },
     });
 
-    await notifyTaskParticipants(t, 'task_assigned', { assignees });
+    await notifyTaskParticipants(t, "task_assigned", { assignees });
 
     res.send(t);
-  }),
+  })
 );
 
-
-
-
-
 router.post(
-  '/:taskId/comments',
+  "/:taskId/comments",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
     const { content, mentions = [] } = req.body || {};
-    if (!content) return res.status(BAD_REQUEST).send('Missing content');
+    if (!content) return res.status(BAD_REQUEST).send("Missing content");
 
     const task = await TaskModel.findById(taskId).lean();
     if (!task || task.isDeleted)
-      return res.status(404).send('Task không tồn tại');
+      return res.status(404).send("Task không tồn tại");
 
     const cmt = await CommentModel.create({
       task: taskId,
@@ -554,29 +632,27 @@ router.post(
     await recordActivity({
       team: task.team,
       actor: req.user.id,
-      verb: 'commented',
-      targetType: 'task',
+      verb: "commented",
+      targetType: "task",
       targetId: task._id,
       metadata: { commentId: cmt._id },
     });
 
-    
-    await notifyTaskParticipants(task, 'task_comment', {
+    await notifyTaskParticipants(task, "task_comment", {
       commentId: cmt._id,
       commentPreview: content.slice(0, 120),
       authorId: req.user.id,
       authorName: req.user.name,
     });
 
-    
     if (Array.isArray(mentions) && mentions.length) {
       const mentionedIds = mentions
         .map((m) => String(m))
-        .filter((id) => id && id !== String(req.user.id)); 
+        .filter((id) => id && id !== String(req.user.id));
 
       if (mentionedIds.length) {
         await createNotificationsForUsers(mentionedIds, {
-          type: 'comment_mention',
+          type: "comment_mention",
           payload: {
             taskId: task._id,
             taskTitle: task.title,
@@ -590,25 +666,42 @@ router.post(
     }
 
     res.status(201).send(cmt);
-  }),
+  })
 );
 
-
-
-
 router.post(
-  '/:taskId/subtasks',
+  "/:taskId/subtasks",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
     const { title, assignee, order = 0 } = req.body || {};
-    if (!title) return res.status(BAD_REQUEST).send('Missing title');
+    if (!title) return res.status(BAD_REQUEST).send("Missing title");
 
     const exists = await TaskModel.exists({
       _id: taskId,
       isDeleted: { $ne: true },
     });
-    if (!exists) return res.status(404).send('Task không tồn tại');
+    if (!exists) return res.status(404).send("Task không tồn tại");
+
+  // Kiểm tra plan & member limit trước khi tạo subtask
+  const task = await TaskModel.findById(taskId).lean();
+  if (!task) return res.status(404).send("Task không tồn tại");
+  try {
+    await ensureTeamUsableForWork(task.team, req.user.id);
+  } catch (e) {
+    if (e?.message === "TEAM_NOT_FOUND") {
+      return res.status(404).send("Team không tồn tại");
+    }
+    if (e?.message === "NOT_TEAM_MEMBER") {
+      return res.status(UNAUTHORIZED).send("Bạn không thuộc team này");
+    }
+    if (e?.name === "FREE_MEMBER_LIMIT_EXCEEDED") {
+      return res
+        .status(BAD_REQUEST)
+        .send("Team gói FREE chỉ cho phép tối đa 3 thành viên. Vui lòng xoá bớt hoặc nâng cấp PREMIUM để tạo task/subtask.");
+    }
+    throw e;
+  }
 
     const st = await SubtaskModel.create({
       parentTask: taskId,
@@ -617,42 +710,37 @@ router.post(
       order,
     });
 
-    const task = await TaskModel.findById(taskId).lean();
-
     await recordActivity({
       team: task.team,
       actor: req.user.id,
-      verb: 'subtask_created',
-      targetType: 'task',
+      verb: "subtask_created",
+      targetType: "task",
       targetId: task._id,
       metadata: { subtaskId: st._id, title },
     });
 
-    await notifyTaskParticipants(task, 'subtask_updated', {
-      action: 'created',
+    await notifyTaskParticipants(task, "subtask_updated", {
+      action: "created",
       subtaskId: st._id,
       title,
     });
 
     res.status(201).send(st);
-  }),
+  })
 );
 
-
-
-
 router.put(
-  '/:taskId/subtasks/:subtaskId',
+  "/:taskId/subtasks/:subtaskId",
   authMid,
   handler(async (req, res) => {
     const { taskId, subtaskId } = req.params;
 
     const updates = {};
-    for (const k of ['title', 'isDone', 'assignee', 'order']) {
-      if (typeof req.body?.[k] !== 'undefined') updates[k] = req.body[k];
+    for (const k of ["title", "isDone", "assignee", "order"]) {
+      if (typeof req.body?.[k] !== "undefined") updates[k] = req.body[k];
     }
     if (
-      Object.prototype.hasOwnProperty.call(updates, 'isDone') &&
+      Object.prototype.hasOwnProperty.call(updates, "isDone") &&
       updates.isDone === true
     ) {
       updates.doneAt = new Date();
@@ -661,53 +749,56 @@ router.put(
     const st = await SubtaskModel.findOneAndUpdate(
       { _id: subtaskId, parentTask: taskId },
       updates,
-      { new: true },
+      { new: true }
     );
-    if (!st) return res.status(404).send('Subtask không tồn tại');
+    if (!st) return res.status(404).send("Subtask không tồn tại");
 
     const task = await TaskModel.findById(taskId).lean();
     await recordActivity({
       team: task.team,
       actor: req.user.id,
-      verb: 'subtask_updated',
-      targetType: 'task',
+      verb: "subtask_updated",
+      targetType: "task",
       targetId: task._id,
       metadata: { subtaskId: st._id, updates },
     });
 
-    await notifyTaskParticipants(task, 'subtask_updated', {
-      action: 'updated',
+    await notifyTaskParticipants(task, "subtask_updated", {
+      action: "updated",
       subtaskId: st._id,
       updates,
     });
 
     res.send(st);
-  }),
+  })
 );
 
-
 router.delete(
-  '/:taskId',
+  "/:taskId",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
 
     const t = await TaskModel.findById(taskId).lean();
-    if (!t) return res.status(404).send('Task không tồn tại');
+    if (!t) return res.status(404).send("Task không tồn tại");
 
     const userId = String(req.user?.id);
 
     // lấy role theo team từ DB (đừng tin token)
-    const me = await UserModel.findById(req.user.id, { roles: 1, isAdmin: 1 }).lean();
+    const me = await UserModel.findById(req.user.id, {
+      roles: 1,
+      isAdmin: 1,
+    }).lean();
     const teamRole =
-      me?.roles?.find((r) => r?.team && String(r.team) === String(t.team))?.role || null;
+      me?.roles?.find((r) => r?.team && String(r.team) === String(t.team))
+        ?.role || null;
 
     const isGlobalAdmin = !!me?.isAdmin;
     const isReporter = t.reporter && String(t.reporter) === userId;
-    const isTeamLeaderOrAdmin = teamRole === 'leader' || teamRole === 'admin';
+    const isTeamLeaderOrAdmin = teamRole === "leader" || teamRole === "admin";
 
     // ===== DEBUG (xong rồi bạn có thể xoá log) =====
-    console.log('[DELETE TASK DEBUG]', {
+    console.log("[DELETE TASK DEBUG]", {
       taskId,
       taskTeam: String(t.team),
       userId,
@@ -718,7 +809,7 @@ router.delete(
     });
 
     if (!isGlobalAdmin && !isReporter && !isTeamLeaderOrAdmin) {
-      return res.status(401).send('Không có quyền xoá task này');
+      return res.status(401).send("Không có quyền xoá task này");
     }
 
     await TaskModel.updateOne(
@@ -727,22 +818,22 @@ router.delete(
     );
 
     return res.send({ ok: true });
-  }),
+  })
 );
 
 router.post(
-  '/:taskId/labels',
+  "/:taskId/labels",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
     const { labels = [] } = req.body || {};
 
     if (!Array.isArray(labels))
-      return res.status(BAD_REQUEST).send('labels must be array');
+      return res.status(BAD_REQUEST).send("labels must be array");
     const ids = labels.map(toObjectId);
 
     const t = await TaskModel.findById(taskId);
-    if (!t || t.isDeleted) return res.status(404).send('Task không tồn tại');
+    if (!t || t.isDeleted) return res.status(404).send("Task không tồn tại");
 
     if (ids.length) {
       const count = await LabelModel.countDocuments({
@@ -750,7 +841,7 @@ router.post(
         team: t.team,
       });
       if (count !== ids.length)
-        return res.status(BAD_REQUEST).send('Label không hợp lệ');
+        return res.status(BAD_REQUEST).send("Label không hợp lệ");
     }
 
     t.labels = ids;
@@ -759,27 +850,24 @@ router.post(
     await recordActivity({
       team: t.team,
       actor: req.user.id,
-      verb: 'labels_set',
-      targetType: 'task',
+      verb: "labels_set",
+      targetType: "task",
       targetId: t._id,
       metadata: { labels: ids },
     });
 
     res.send(t);
-  }),
+  })
 );
 
-
-
-
 router.post(
-  '/:taskId/attachments',
+  "/:taskId/attachments",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
     const { name, mimeType, size, storage } = req.body || {};
     const t = await TaskModel.findById(taskId);
-    if (!t || t.isDeleted) return res.status(404).send('Task không tồn tại');
+    if (!t || t.isDeleted) return res.status(404).send("Task không tồn tại");
 
     const att = await AttachmentModel.create({
       task: taskId,
@@ -798,44 +886,41 @@ router.post(
     await recordActivity({
       team: t.team,
       actor: req.user.id,
-      verb: 'attachment_added',
-      targetType: 'task',
+      verb: "attachment_added",
+      targetType: "task",
       targetId: t._id,
       metadata: { attachmentId: att._id, name },
     });
 
-    await notifyTaskParticipants(t, 'attachment_added', {
+    await notifyTaskParticipants(t, "attachment_added", {
       attachmentId: att._id,
       name,
     });
 
     res.status(201).send(att);
-  }),
+  })
 );
 
-
-
-
 router.post(
-  '/:taskId/attachments/upload',
+  "/:taskId/attachments/upload",
   authMid,
-  upload.single('file'),
+  upload.single("file"),
   handler(async (req, res) => {
     const { taskId } = req.params;
     const { subtaskId } = req.body || {};
     const file = req.file;
 
-    if (!file) return res.status(BAD_REQUEST).send('Missing file');
+    if (!file) return res.status(BAD_REQUEST).send("Missing file");
 
     const task = await TaskModel.findById(taskId);
     if (!task || task.isDeleted) {
-      return res.status(404).send('Task không tồn tại');
+      return res.status(404).send("Task không tồn tại");
     }
 
     let subtaskDoc = null;
     if (subtaskId) {
       if (!isValidId(subtaskId)) {
-        return res.status(BAD_REQUEST).send('Invalid subtaskId');
+        return res.status(BAD_REQUEST).send("Invalid subtaskId");
       }
 
       subtaskDoc = await SubtaskModel.findOne({
@@ -844,14 +929,14 @@ router.post(
       }).lean();
 
       if (!subtaskDoc) {
-        return res.status(BAD_REQUEST).send('Subtask không thuộc task này');
+        return res.status(BAD_REQUEST).send("Subtask không thuộc task này");
       }
     }
 
     const result = await uploadToCloudinary(file.buffer, {
-      folder: 'smartwork/attachments',
+      folder: "smartwork/attachments",
       filename: undefined,
-      resource_type: 'auto',
+      resource_type: "auto",
     });
 
     const att = await AttachmentModel.create({
@@ -862,7 +947,7 @@ router.post(
       mimeType: file.mimetype,
       size: file.size,
       storage: {
-        provider: 'cloudinary',
+        provider: "cloudinary",
         key: result.public_id,
         url: result.secure_url,
       },
@@ -873,24 +958,21 @@ router.post(
     });
 
     const populated = await AttachmentModel.findById(att._id)
-      .populate('subtask', 'title')
-      .populate('uploadedBy', 'name email avatarUrl')
+      .populate("subtask", "title")
+      .populate("uploadedBy", "name email avatarUrl")
       .lean();
 
-    await notifyTaskParticipants(task, 'attachment_added', {
+    await notifyTaskParticipants(task, "attachment_added", {
       attachmentId: att._id,
       name: file.originalname,
     });
 
     res.status(201).send(populated);
-  }),
+  })
 );
 
-
-
-
 router.delete(
-  '/:taskId/attachments/:attachmentId',
+  "/:taskId/attachments/:attachmentId",
   authMid,
   handler(async (req, res) => {
     const { taskId, attachmentId } = req.params;
@@ -899,22 +981,19 @@ router.delete(
       _id: attachmentId,
       task: taskId,
     });
-    if (!att) return res.status(404).send('Attachment không tồn tại');
+    if (!att) return res.status(404).send("Attachment không tồn tại");
 
-    if (
-      !req.user.isAdmin &&
-      String(att.uploadedBy) !== String(req.user.id)
-    ) {
-      return res.status(UNAUTHORIZED).send('Không có quyền xoá tệp này');
+    if (!req.user.isAdmin && String(att.uploadedBy) !== String(req.user.id)) {
+      return res.status(UNAUTHORIZED).send("Không có quyền xoá tệp này");
     }
 
-    if (att.storage?.provider === 'cloudinary' && att.storage?.key) {
+    if (att.storage?.provider === "cloudinary" && att.storage?.key) {
       try {
         await cloudinary.uploader.destroy(att.storage.key, {
-          resource_type: 'auto',
+          resource_type: "auto",
         });
       } catch (e) {
-        console.warn('[cloudinary destroy failed]', e?.message || e);
+        console.warn("[cloudinary destroy failed]", e?.message || e);
       }
     }
 
@@ -927,33 +1006,30 @@ router.delete(
     await recordActivity({
       team: task.team,
       actor: req.user.id,
-      verb: 'attachment_removed',
-      targetType: 'task',
+      verb: "attachment_removed",
+      targetType: "task",
       targetId: task._id,
       metadata: { attachmentId },
     });
 
-    await notifyTaskParticipants(task, 'attachment_removed', {
+    await notifyTaskParticipants(task, "attachment_removed", {
       attachmentId,
     });
 
     return res.send();
-  }),
+  })
 );
 
-
-
-
 router.delete(
-  '/:taskId',
+  "/:taskId",
   authMid,
   handler(async (req, res) => {
     const { taskId } = req.params;
     const t = await TaskModel.findById(taskId);
-    if (!t) return res.status(404).send('Task không tồn tại');
+    if (!t) return res.status(404).send("Task không tồn tại");
 
     if (!req.user.isAdmin && String(t.reporter) !== String(req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Không có quyền xoá task này');
+      return res.status(UNAUTHORIZED).send("Không có quyền xoá task này");
     }
 
     t.isDeleted = true;
@@ -963,27 +1039,22 @@ router.delete(
     await recordActivity({
       team: t.team,
       actor: req.user.id,
-      verb: 'deleted',
-      targetType: 'task',
+      verb: "deleted",
+      targetType: "task",
       targetId: t._id,
       metadata: {},
     });
 
-    
-
     res.send();
-  }),
+  })
 );
 
-
-
-
 router.get(
-  '/stats/overview',
+  "/stats/overview",
   authMid,
   handler(async (req, res) => {
     const { team, project, sprint } = req.query;
-    if (!team) return res.status(BAD_REQUEST).send('Missing team');
+    if (!team) return res.status(BAD_REQUEST).send("Missing team");
 
     const match = { team: toObjectId(team), isDeleted: { $ne: true } };
     if (project) match.project = toObjectId(project);
@@ -992,19 +1063,19 @@ router.get(
     const [byStatus, byAssignee, overdue] = await Promise.all([
       TaskModel.aggregate([
         { $match: match },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
       TaskModel.aggregate([
         { $match: match },
         {
-          $unwind: { path: '$assignees', preserveNullAndEmptyArrays: true },
+          $unwind: { path: "$assignees", preserveNullAndEmptyArrays: true },
         },
-        { $group: { _id: '$assignees', count: { $sum: 1 } } },
+        { $group: { _id: "$assignees", count: { $sum: 1 } } },
       ]),
       TaskModel.countDocuments({
         ...match,
         dueDate: { $lt: new Date() },
-        status: { $nin: ['done'] },
+        status: { $nin: ["done"] },
       }),
     ]);
 
@@ -1013,7 +1084,7 @@ router.get(
       byAssignee,
       overdue,
     });
-  }),
+  })
 );
 
 export default router;

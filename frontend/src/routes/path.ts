@@ -17,6 +17,4 @@ export const ROUTES = {
   LABELS: '/admin/labels',
   AUTH: '/auth',
   LOGIN: '/auth/login',
-  REGISTER: '/auth/register',
-  RESET_PASSWORD: '/auth/reset-password',
 } as const;
