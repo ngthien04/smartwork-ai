@@ -41,6 +41,21 @@ function normEmail(email) {
   return String(email || '').toLowerCase().trim();
 }
 
+// Helper: cập nhật plan nếu đã hết hạn (dùng cho invite flow)
+async function ensurePlanUpToDate(teamDoc) {
+  if (!teamDoc) return teamDoc;
+  if (teamDoc.plan === 'PREMIUM' && teamDoc.planExpiredAt) {
+    const now = new Date();
+    const expiredAt = new Date(teamDoc.planExpiredAt);
+    if (expiredAt <= now) {
+      teamDoc.plan = 'FREE';
+      teamDoc.planExpiredAt = undefined;
+      await teamDoc.save();
+    }
+  }
+  return teamDoc;
+}
+
 function buildInviteLinks(token) {
   const APP_URL = process.env.APP_URL || 'http://localhost:3000';
   return {
@@ -129,6 +144,9 @@ router.post(
     const teamDoc = await TeamModel.findById(team);
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
 
+    // Cập nhật plan nếu vừa hết hạn để không bypass validation
+    await ensurePlanUpToDate(teamDoc);
+
     // ✅ chỉ leader/admin (hoặc global admin)
     if (!isLeaderOrAdmin(teamDoc, req.user)) {
       return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới được mời thành viên');
@@ -142,6 +160,14 @@ router.post(
     if (existingUser) {
       const isInTeam = teamDoc.members?.some((m) => String(m.user) === String(existingUser._id));
       if (isInTeam) return res.status(BAD_REQUEST).send('User này đã ở trong team');
+    }
+
+    // ✅ VALIDATION: Kiểm tra member limit cho FREE plan trước khi tạo invite
+    if (teamDoc.plan === 'FREE') {
+      const currentMemberCount = teamDoc.members?.length || 0;
+      if (currentMemberCount >= 3) {
+        return res.status(BAD_REQUEST).send('Gói FREE chỉ cho phép tối đa 3 thành viên (bao gồm leader). Vui lòng nâng cấp lên PREMIUM để mời thêm thành viên.');
+      }
     }
 
     const now = new Date();
@@ -222,6 +248,9 @@ router.post(
     const teamDoc = await TeamModel.findById(invite.team);
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
 
+    // Cập nhật plan nếu vừa hết hạn để không bypass validation
+    await ensurePlanUpToDate(teamDoc);
+
     const me = await UserModel.findById(req.user.id);
     if (!me) return res.status(404).send('User không tồn tại');
 
@@ -232,6 +261,14 @@ router.post(
     // add/update member
     const exists = teamDoc.members?.some((m) => String(m.user) === String(me._id));
     if (!exists) {
+      // ✅ VALIDATION: Kiểm tra member limit cho FREE plan
+      if (teamDoc.plan === 'FREE') {
+        const currentMemberCount = teamDoc.members?.length || 0;
+        if (currentMemberCount >= 3) {
+          return res.status(BAD_REQUEST).send('Gói FREE chỉ cho phép tối đa 3 thành viên (bao gồm leader). Vui lòng nâng cấp lên PREMIUM để thêm thành viên.');
+        }
+      }
+      
       teamDoc.members = teamDoc.members || [];
       teamDoc.members.push({ user: me._id, role: invite.role, joinedAt: new Date() });
       await teamDoc.save();

@@ -16,7 +16,6 @@ import ProjectListPage from '@/pages/projects/ProjectListPage';
 import ProjectDetailPage from '@/pages/projects/ProjectDetailPage';
 import TeamManagementPage from '@/pages/team/TeamManagementPage';
 import AuthPage from '@/pages/auth/AuthPage';
-import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 import AdminPage from '@/pages/admin/AdminPage';
 import AcceptInvitePage from '@/pages/invite/AcceptInvitePage';
 
@@ -63,7 +62,5 @@ export default function useRouterElements() {
     },
     { path: ROUTES.AUTH, element: <AuthPage /> },
     { path: ROUTES.LOGIN, element: <AuthPage /> },
-    { path: ROUTES.REGISTER, element: <AuthPage /> },
-    { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage /> },
   ]);
 }

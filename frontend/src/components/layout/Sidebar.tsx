@@ -85,6 +85,11 @@ export default function Sidebar() {
       icon: <TeamOutlined />,
       label: 'Quản lý team',
     },
+    {
+      key: 'plans',
+      icon: <SettingOutlined />,
+      label: 'Quản lý gói',
+    },
   ];
 
   const useAdminMenu = isAdminUser && isOnAdminPage;
@@ -96,14 +101,14 @@ export default function Sidebar() {
       search.set('tab', key);
       navigate({ pathname: ROUTES.ADMIN, search: `?${search.toString()}` });
     } else {
-      navigate(key);
+    navigate(key);
     }
   };
 
   return (
     <aside
       className={`app-sidebar border-r transition-all duration-300 ${
-        sidebarCollapsed ? 'w-20' : 'w-64'
+      sidebarCollapsed ? 'w-20' : 'w-64'
       }`}
     >
       <div className="h-full flex flex-col">
@@ -123,17 +128,17 @@ export default function Sidebar() {
                 : location.pathname === item.key;
 
               return (
-                <Button
-                  key={item.key}
+              <Button
+                key={item.key}
                   variant={isActive ? 'default' : 'ghost'}
-                  className={`w-full justify-start ${
-                    sidebarCollapsed ? 'px-2' : 'px-3'
-                  }`}
-                  onClick={() => handleMenuClick(item.key)}
-                >
-                  <span className="mr-3">{item.icon}</span>
-                  {!sidebarCollapsed && <span>{item.label}</span>}
-                </Button>
+                className={`w-full justify-start ${
+                  sidebarCollapsed ? 'px-2' : 'px-3'
+                }`}
+                onClick={() => handleMenuClick(item.key)}
+              >
+                <span className="mr-3">{item.icon}</span>
+                {!sidebarCollapsed && <span>{item.label}</span>}
+              </Button>
               );
             })}
           </div>

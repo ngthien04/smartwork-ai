@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import authMid from '../middleware/auth.mid.js';
-import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
+import { BAD_REQUEST, UNAUTHORIZED, FORBIDDEN } from '../constants/httpStatus.js';
 import { ChatSessionModel } from '../models/chatSession.js';
 
 import {
@@ -34,6 +34,108 @@ const toId = (v) => {
   return new mongoose.Types.ObjectId(s);
 };
 
+/**
+ * Helper function để check xem team có quyền dùng Premium features không
+ * @param {Object} team - Team document
+ * @returns {boolean} true nếu team có quyền Premium và chưa hết hạn
+ */
+function hasPremiumAccess(team) {
+  if (!team || team.plan !== 'PREMIUM') {
+    return false;
+  }
+
+  if (!team.planExpiredAt) {
+    return false; // Premium nhưng không có thời hạn (lỗi data)
+  }
+
+  const now = new Date();
+  const expiredAt = new Date(team.planExpiredAt);
+
+  return expiredAt > now;
+}
+
+/**
+ * Helper function để check AI feature access
+ * @param {string} feature - AI feature name: 'chat' | 'priority' | 'planning' | 'triage' | 'status'
+ * @param {Object} team - Team document
+ * @returns {boolean} true nếu có quyền dùng feature này
+ */
+function canUseAIFeature(feature, team) {
+  // FREE features: chat, triage, planning, status (mở theo yêu cầu)
+  if (feature === 'chat' || feature === 'triage' || feature === 'planning' || feature === 'status') {
+    return true;
+  }
+
+  // Các feature phân tích sâu (AI Insights) cần PREMIUM: priority
+  return hasPremiumAccess(team);
+}
+
+/**
+ * Middleware để validate AI feature access
+ * @param {string} feature - AI feature name
+ * @returns {Function} Express middleware
+ */
+function validateAIFeatureAccess(feature) {
+  return handler(async (req, res, next) => {
+    try {
+      // Lấy teamId từ request (có thể từ query, params, hoặc body)
+      let teamId = req.query.team || req.params.teamId || req.body.team;
+
+      // Nếu không có teamId trực tiếp, thử lấy từ task
+      if (!teamId && req.params.taskId) {
+        const task = await TaskModel.findById(req.params.taskId, { team: 1 }).lean();
+        if (task) {
+          teamId = task.team;
+        }
+      }
+
+      // Nếu vẫn không có teamId, lấy từ user's teams
+      if (!teamId) {
+        const userTeamIds = await getUserTeamIds(req.user.id);
+        if (userTeamIds.length === 1) {
+          teamId = userTeamIds[0];
+        } else {
+          // Nếu có nhiều teams, không thể xác định -> yêu cầu teamId
+          return res.status(BAD_REQUEST).send('Vui lòng chỉ định teamId trong request');
+        }
+      }
+
+      if (!teamId || !isValidId(teamId)) {
+        return res.status(BAD_REQUEST).send('TeamId không hợp lệ');
+      }
+
+      // Lấy team và check plan
+      const team = await TeamModel.findById(teamId).lean();
+      if (!team || team.isDeleted) {
+        return res.status(404).send('Team không tồn tại');
+      }
+
+      // Check quyền dùng AI feature
+      if (!canUseAIFeature(feature, team)) {
+        const featureNames = {
+          chat: 'Chat AI',
+          priority: 'Priority Analysis AI',
+          planning: 'Task Planning AI',
+          triage: 'Bug Triage AI',
+          status: 'Status Analysis AI',
+        };
+        const featureName = featureNames[feature] || feature;
+        return res.status(FORBIDDEN).send(
+          `${featureName} chỉ có trong gói PREMIUM. Vui lòng nâng cấp để sử dụng tính năng này.`
+        );
+      }
+
+      // Lưu team vào request để dùng sau
+      req.team = team;
+      req.teamId = teamId;
+      next();
+    } catch (error) {
+      console.error('validateAIFeatureAccess error:', error);
+      return res.status(500).send('Lỗi khi kiểm tra quyền truy cập AI feature');
+    }
+  });
+}
+
 async function userHasAnyRoleInTeam(userId, teamId) {
   if (!teamId) return false;
   const ok = await UserModel.exists({
@@ -47,6 +149,22 @@ function isStale(createdAt, days = 3) {
   if (!createdAt) return true;
   const ms = Date.now() - new Date(createdAt).getTime();
   return ms > days * 24 * 60 * 60 * 1000;
+}
+
+/** =======================
+ * TEAM RESOLVE (theo TeamModel.members / leaders)
+ * ======================= */
+async function getUserTeamIds(userId) {
+  const uid = toId(userId);
+  if (!uid) return [];
+  const teams = await TeamModel.find(
+    {
+      isDeleted: false,
+      $or: [{ leaders: uid }, { 'members.user': uid }],
+    },
+    { _id: 1 }
+  ).lean();
+  return teams.map((t) => t._id).filter(Boolean);
 }
 
 async function handleCreateTaskFromDraft(req, t, intentResult) {
@@ -182,22 +300,6 @@ async function recordActivity({ team, actor, verb, targetType, targetId, metadat
   try {
     await ActivityModel.create({ team, actor, verb, targetType, targetId, metadata });
   } catch {}
-}
-
-/** =======================
- * TEAM RESOLVE (theo TeamModel.members / leaders)
- * ======================= */
-async function getUserTeamIds(userId) {
-  const uid = toId(userId);
-  if (!uid) return [];
-  const teams = await TeamModel.find(
-    {
-      isDeleted: false,
-      $or: [{ leaders: uid }, { 'members.user': uid }],
-    },
-    { _id: 1 }
-  ).lean();
-  return teams.map((t) => t._id).filter(Boolean);
 }
 
 async function resolveTeamIdSmart(req, taskDraft) {
@@ -660,6 +762,7 @@ router.post(
 router.post(
   '/plan',
   authMid,
+  validateAIFeatureAccess('planning'),
   handler(async (req, res) => {
     const { goal, constraints = {} } = req.body || {};
     if (!goal || !String(goal).trim()) return res.status(BAD_REQUEST).send('Thiếu goal để lập kế hoạch');
@@ -683,6 +786,7 @@ router.post(
 router.post(
   '/tasks/:taskId/priority',
   authMid,
+  validateAIFeatureAccess('priority'),
   handler(async (req, res) => {
     const { taskId } = req.params;
     if (!isValidId(taskId)) return res.status(400).send('Invalid taskId');
@@ -781,6 +885,7 @@ router.get(
 router.post(
   '/tasks/:taskId/priority/analyze',
   authMid,
+  validateAIFeatureAccess('priority'),
   handler(async (req, res) => {
     const { taskId } = req.params;
     if (!isValidId(taskId)) return res.status(BAD_REQUEST).send('TaskId không hợp lệ');

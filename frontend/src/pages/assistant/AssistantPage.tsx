@@ -15,6 +15,7 @@ import {
   Tooltip,
   Progress,
   Empty,
+  Alert,
 } from 'antd';
 import {
   RobotOutlined,
@@ -23,11 +24,13 @@ import {
   InfoCircleOutlined,
   ReloadOutlined,
   MessageOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 
 import ChatPanel from '@/components/chat/ChatPanel';
 import { aiServices } from '@/services/aiServices';
 import type { BugTriageResponse, TriageItem } from '@/types/ai';
+import { useAIFeatureAccess } from '@/hooks/useTeamPlan';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -61,6 +64,9 @@ function priorityColor(p: TriageItem['priority']) {
 
 export default function AssistantPage() {
   const { t } = useTranslation();
+
+  // Check AI feature access
+  const triageAccess = useAIFeatureAccess('triage');
 
   const [bugText, setBugText] = useState('');
   const [triageLoading, setTriageLoading] = useState(false);
@@ -224,6 +230,29 @@ Search tasks không tìm theo description`,
         {/* Bug triage */}
         <Col xs={24} lg={8}>
           <Space direction="vertical" className="w-full" size="large">
+            {!triageAccess.hasAccess && (
+              <Alert
+                message="Tính năng Premium"
+                description={
+                  <div>
+                    <p style={{ marginBottom: 8 }}>Bug Triage AI chỉ có trong gói PREMIUM.</p>
+                    <Button
+                      type="primary"
+                      icon={<CrownOutlined />}
+                      size="small"
+                      onClick={() => {
+                        window.location.href = '/teams';
+                      }}
+                    >
+                      Nâng cấp lên PREMIUM
+                    </Button>
+                  </div>
+                }
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
             <Card
               style={{ borderRadius: 16 }}
               title={
@@ -295,6 +324,7 @@ Search tasks không tìm theo description`,
                       icon={<ThunderboltOutlined />}
                       onClick={handleRunTriage}
                       loading={triageLoading}
+                      disabled={!triageAccess.hasAccess}
                       style={{ borderRadius: 12 }}
                     >
                       Analyze

@@ -247,41 +247,48 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" style={{ width: '100%', overflowX: 'hidden', maxWidth: '100%' }}>
       {/* TOP BAR */}
       <Card className="sticky top-0 z-10" style={{ borderRadius: 12 }} bodyStyle={{ padding: 16 }}>
         <div className="flex flex-col gap-3">
           {/* Title row */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <Title level={2} className="m-0">
+              <Title level={2} className="m-0 text-xl sm:text-2xl">
                 {t('tasks.title')}
               </Title>
-              <Text type="secondary">Mọi task đều phải thuộc một Project cụ thể.</Text>
+              <Text type="secondary" className="text-xs sm:text-sm">Mọi task đều phải thuộc một Project cụ thể.</Text>
             </div>
-            <Space wrap>
-              <Button icon={<ReloadOutlined />} onClick={handleReload} loading={loading}>
+            <Space wrap className="w-full sm:w-auto">
+              <Button icon={<ReloadOutlined />} onClick={handleReload} loading={loading} size="small" className="w-full sm:w-auto">
                 Reload
               </Button>
-              <Button type="primary" icon={<ProjectOutlined />} onClick={() => navigate('/projects')}>
+              <Button type="primary" icon={<ProjectOutlined />} onClick={() => navigate('/projects')} size="small" className="w-full sm:w-auto">
                 Tạo task trong Project
               </Button>
             </Space>
           </div>
 
           {/* Filters row */}
-          <div className="flex flex-col lg:flex-row gap-10 items-stretch">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch">
+            <div className="flex-1 w-full">
               <Input
                 placeholder="Tìm tiêu đề hoặc mô tả..."
                 prefix={<SearchOutlined />}
                 value={filters.search}
                 onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
+                size="small"
+                className="w-full"
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 items-center">
-              <Select style={{ minWidth: 170 }} value={filters.status} onChange={(value) => setFilters((p) => ({ ...p, status: value }))}>
+            <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+              <Select 
+                className="w-full sm:w-auto sm:min-w-[150px]" 
+                size="small"
+                value={filters.status} 
+                onChange={(value) => setFilters((p) => ({ ...p, status: value }))}
+              >
                 <Option value="all">Tất cả trạng thái</Option>
                 <Option value="backlog">Backlog</Option>
                 <Option value="todo">Cần làm</Option>
@@ -289,7 +296,12 @@ export default function TasksPage() {
                 <Option value="done">Hoàn thành</Option>
               </Select>
 
-              <Select style={{ minWidth: 150 }} value={filters.priority} onChange={(value) => setFilters((p) => ({ ...p, priority: value }))}>
+              <Select 
+                className="w-full sm:w-auto sm:min-w-[130px]" 
+                size="small"
+                value={filters.priority} 
+                onChange={(value) => setFilters((p) => ({ ...p, priority: value }))}
+              >
                 <Option value="all">Mọi ưu tiên</Option>
                 <Option value="low">Thấp</Option>
                 <Option value="normal">Bình thường</Option>
@@ -297,7 +309,12 @@ export default function TasksPage() {
                 <Option value="urgent">Khẩn cấp</Option>
               </Select>
 
-              <Select style={{ minWidth: 200 }} value={filters.assignee} onChange={(value) => setFilters((p) => ({ ...p, assignee: value }))}>
+              <Select 
+                className="w-full sm:w-auto sm:min-w-[180px]" 
+                size="small"
+                value={filters.assignee} 
+                onChange={(value) => setFilters((p) => ({ ...p, assignee: value }))}
+              >
                 <Option value="all">Mọi người phụ trách</Option>
                 {assigneeOptions.map((u) => (
                   <Option key={u.id} value={u.id}>
@@ -306,7 +323,12 @@ export default function TasksPage() {
                 ))}
               </Select>
 
-              <Select style={{ minWidth: 170 }} value={filters.label} onChange={(value) => setFilters((p) => ({ ...p, label: value }))}>
+              <Select 
+                className="w-full sm:w-auto sm:min-w-[150px]" 
+                size="small"
+                value={filters.label} 
+                onChange={(value) => setFilters((p) => ({ ...p, label: value }))}
+              >
                 <Option value="all">Mọi nhãn</Option>
                 {labelOptions.map((lb) => (
                   <Option key={lb.id} value={lb.id}>
@@ -317,7 +339,7 @@ export default function TasksPage() {
                 ))}
               </Select>
 
-              <Button onClick={clearFilters}>Clear</Button>
+              <Button onClick={clearFilters} size="small" className="w-full sm:w-auto">Clear</Button>
             </div>
           </div>
 
@@ -397,9 +419,8 @@ export default function TasksPage() {
       </Row>
 
       {/* BOARD */}
-      <Card style={{ borderRadius: 12 }}>
-        <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: 980 }}>
+      <Card style={{ borderRadius: 12, width: '100%', overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'hidden', width: '100%', maxWidth: '100%' }}>
             <Kanban
               tasks={filteredTasks}
               onTaskUpdate={handleTaskUpdate}
@@ -407,7 +428,6 @@ export default function TasksPage() {
               onCreateTask={() => message.info('Vui lòng tạo task trong trang Project Detail để gắn với dự án cụ thể.')}
               onTaskSelect={openDetailModal}
             />
-          </div>
         </div>
       </Card>
 

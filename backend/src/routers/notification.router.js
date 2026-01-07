@@ -1,13 +1,16 @@
-import { Router } from 'express';
-import mongoose from 'mongoose';
-import authMid from '../middleware/auth.mid.js';
-import { BAD_REQUEST, UNAUTHORIZED } from '../constants/httpStatus.js';
+import { Router } from "express";
+import mongoose from "mongoose";
+import authMid from "../middleware/auth.mid.js";
+import { BAD_REQUEST, UNAUTHORIZED } from "../constants/httpStatus.js";
 
-import { NotificationModel } from '../models/notification.js';
-import { UserModel } from '../models/users.js';
+import { NotificationModel } from "../models/notification.js";
+import { UserModel } from "../models/users.js";
+import dayjs from "dayjs";
+import { TaskModel } from "../models/task.js";
 
 const router = Router();
-const handler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const handler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
 const isValidId = (id) => mongoose.isValidObjectId(id);
 const toId = (v) => new mongoose.Types.ObjectId(String(v));
 
@@ -23,8 +26,8 @@ function buildQuery(qs) {
   if (qs.user && isValidId(qs.user)) q.user = toId(qs.user);
   if (qs.type) q.type = String(qs.type);
   if (qs.channel) q.channel = String(qs.channel);
-  if (qs.isRead === '1' || qs.isRead === 'true') q.isRead = true;
-  if (qs.isRead === '0' || qs.isRead === 'false') q.isRead = false;
+  if (qs.isRead === "1" || qs.isRead === "true") q.isRead = true;
+  if (qs.isRead === "0" || qs.isRead === "false") q.isRead = false;
   if (qs.from || qs.to) {
     q.createdAt = {};
     if (qs.from) q.createdAt.$gte = new Date(qs.from);
@@ -33,26 +36,100 @@ function buildQuery(qs) {
   return q;
 }
 
-/**
- * GET /api/notifications
- * Query: user?, type?, channel?, isRead?=1|0, from?, to?, page?, limit?
- * - Non-admin: luôn giới hạn theo user hiện tại (bỏ qua query.user nếu có)
- */
+export async function ensureDeadlineNotificationsForUser(
+  userId,
+  { days = 3 } = {}
+) {
+  const uid = toId(userId);
+  const uidStr = String(userId);
+
+  const today = dayjs().startOf("day");
+  const noticeDate = today.format("YYYY-MM-DD");
+  const to = today.add(days, "day").endOf("day").toDate();
+
+  const tasks = await TaskModel.find(
+    {
+      isDeleted: { $ne: true },
+      status: { $ne: "done" },
+      dueDate: { $exists: true, $ne: null, $lte: to },
+      $or: [
+        { assignees: uid },
+        { assignees: uidStr },
+        { reporter: uid },
+        { reporter: uidStr },
+      ],
+    },
+    { title: 1, dueDate: 1, priority: 1, project: 1, team: 1 }
+  ).lean();
+
+  if (!tasks.length) return;
+
+  const existing = await NotificationModel.find(
+    {
+      user: uid,
+      type: "task_deadline_soon",
+      "payload.noticeDate": noticeDate,
+      "payload.taskId": { $in: tasks.map((t) => String(t._id)) },
+    },
+    { "payload.taskId": 1 }
+  ).lean();
+
+  const existedTaskIds = new Set(
+    existing.map((n) => String(n.payload?.taskId))
+  );
+
+  const docs = [];
+  for (const t of tasks) {
+    const taskId = String(t._id);
+    if (existedTaskIds.has(taskId)) continue;
+
+    const due = dayjs(t.dueDate);
+    const daysLeft = due.startOf("day").diff(today, "day"); // 0..days
+
+    if (daysLeft < 0 || daysLeft > days) continue;
+
+    docs.push({
+      user: uid,
+      channel: "web",
+      type: "task_deadline_soon",
+      payload: {
+        noticeDate,
+        taskId,
+        taskTitle: t.title,
+        dueDate: due.toISOString(),
+        daysLeft,
+        priority: t.priority || "normal",
+        projectId: t.project ? String(t.project) : null,
+        teamId: t.team ? String(t.team) : null,
+      },
+    });
+  }
+
+  if (!docs.length) return;
+
+  try {
+    await NotificationModel.insertMany(docs, { ordered: false });
+  } catch (e) {
+    if (e?.code !== 11000)
+      console.warn("[deadline noti insert error]", e?.message || e);
+  }
+}
+
 router.get(
-  '/',
+  "/",
   authMid,
   handler(async (req, res) => {
     const { page, limit, skip } = parsePaging(req.query);
     const q = buildQuery(req.query);
 
-    if (!req.user?.isAdmin) {
-      q.user = toId(req.user.id);
-    } else if (!q.user) {
-      
-    }
+    if (!req.user?.isAdmin) q.user = toId(req.user.id);
 
     const [items, total] = await Promise.all([
-      NotificationModel.find(q).sort('-createdAt').skip(skip).limit(limit).lean(),
+      NotificationModel.find(q)
+        .sort("-createdAt")
+        .skip(skip)
+        .limit(limit)
+        .lean(),
       NotificationModel.countDocuments(q),
     ]);
 
@@ -60,66 +137,52 @@ router.get(
   })
 );
 
-/**
- * GET /api/notifications/unread-count
- * Query: user?, type?, channel?
- * - Non-admin: chỉ đếm của bản thân
- */
 router.get(
-  '/unread-count',
+  "/unread-count",
   authMid,
   handler(async (req, res) => {
+    await ensureDeadlineNotificationsForUser(req.user.id, { days: 3 });
+
     const q = buildQuery(req.query);
     q.isRead = false;
 
-    if (!req.user?.isAdmin) {
-      q.user = toId(req.user.id);
-    } else if (!q.user) {
-      
-    }
+    if (!req.user?.isAdmin) q.user = toId(req.user.id);
 
     const count = await NotificationModel.countDocuments(q);
     res.send({ unread: count });
   })
 );
 
-/**
- * GET /api/notifications/:id
- */
 router.get(
-  '/:id',
+  "/:id",
   authMid,
   handler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid notification id');
+    if (!isValidId(id))
+      return res.status(BAD_REQUEST).send("Invalid notification id");
 
     const doc = await NotificationModel.findById(id).lean();
-    if (!doc) return res.status(404).send('Notification không tồn tại');
+    if (!doc) return res.status(404).send("Notification không tồn tại");
 
     if (!req.user?.isAdmin && String(doc.user) !== String(req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Không có quyền xem thông báo này');
+      return res.status(UNAUTHORIZED).send("Không có quyền xem thông báo này");
     }
 
     res.send(doc);
   })
 );
 
-/**
- * POST /api/notifications
- * body: { user?, channel='web', type, payload? }
- * - Non-admin: chỉ tạo cho chính mình (bỏ qua body.user)
- */
 router.post(
-  '/',
+  "/",
   authMid,
   handler(async (req, res) => {
-    const { user, channel = 'web', type, payload } = req.body || {};
-    if (!type) return res.status(BAD_REQUEST).send('Missing type');
+    const { user, channel = "web", type, payload } = req.body || {};
+    if (!type) return res.status(BAD_REQUEST).send("Missing type");
 
     let userId = req.user.id;
     if (req.user?.isAdmin && user && isValidId(user)) {
       const exists = await UserModel.exists({ _id: toId(user) });
-      if (!exists) return res.status(404).send('User không tồn tại');
+      if (!exists) return res.status(404).send("User không tồn tại");
       userId = user;
     }
 
@@ -135,21 +198,21 @@ router.post(
   })
 );
 
-/**
- * PUT /api/notifications/:id/read    (đánh dấu đã đọc)
- */
 router.put(
-  '/:id/read',
+  "/:id/read",
   authMid,
   handler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid notification id');
+    if (!isValidId(id))
+      return res.status(BAD_REQUEST).send("Invalid notification id");
 
     const doc = await NotificationModel.findById(id);
-    if (!doc) return res.status(404).send('Notification không tồn tại');
+    if (!doc) return res.status(404).send("Notification không tồn tại");
 
     if (!req.user?.isAdmin && String(doc.user) !== String(req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Không có quyền thao tác thông báo này');
+      return res
+        .status(UNAUTHORIZED)
+        .send("Không có quyền thao tác thông báo này");
     }
 
     if (!doc.isRead) {
@@ -162,21 +225,21 @@ router.put(
   })
 );
 
-/**
- * PUT /api/notifications/:id/unread  (đánh dấu chưa đọc)
- */
 router.put(
-  '/:id/unread',
+  "/:id/unread",
   authMid,
   handler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid notification id');
+    if (!isValidId(id))
+      return res.status(BAD_REQUEST).send("Invalid notification id");
 
     const doc = await NotificationModel.findById(id);
-    if (!doc) return res.status(404).send('Notification không tồn tại');
+    if (!doc) return res.status(404).send("Notification không tồn tại");
 
     if (!req.user?.isAdmin && String(doc.user) !== String(req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Không có quyền thao tác thông báo này');
+      return res
+        .status(UNAUTHORIZED)
+        .send("Không có quyền thao tác thông báo này");
     }
 
     if (doc.isRead) {
@@ -189,21 +252,13 @@ router.put(
   })
 );
 
-/**
- * POST /api/notifications/mark-all-read
- * body: { before?, types?[], channels?[] }
- * - Đánh dấu tất cả thông báo của current user (hoặc user chỉ định nếu admin)
- *   là đã đọc, với filter tuỳ chọn.
- * Query: user? (admin-only)
- */
 router.post(
-  '/mark-all-read',
+  "/mark-all-read",
   authMid,
   handler(async (req, res) => {
     const { before, types, channels } = req.body || {};
     const q = { isRead: false };
 
-    
     if (req.user?.isAdmin && req.query.user && isValidId(req.query.user)) {
       q.user = toId(req.query.user);
     } else {
@@ -211,30 +266,34 @@ router.post(
     }
 
     if (before) q.createdAt = { $lte: new Date(before) };
-    if (Array.isArray(types) && types.length) q.type = { $in: types.map(String) };
-    if (Array.isArray(channels) && channels.length) q.channel = { $in: channels.map(String) };
+    if (Array.isArray(types) && types.length)
+      q.type = { $in: types.map(String) };
+    if (Array.isArray(channels) && channels.length)
+      q.channel = { $in: channels.map(String) };
 
-    const result = await NotificationModel.updateMany(q, { $set: { isRead: true, readAt: new Date() } });
-    res.send({ matched: result.matchedCount ?? result.n, modified: result.modifiedCount ?? result.nModified });
+    const result = await NotificationModel.updateMany(q, {
+      $set: { isRead: true, readAt: new Date() },
+    });
+    res.send({
+      matched: result.matchedCount ?? result.n,
+      modified: result.modifiedCount ?? result.nModified,
+    });
   })
 );
 
-/**
- * DELETE /api/notifications/:id
- * - chỉ chủ sở hữu hoặc admin
- */
 router.delete(
-  '/:id',
+  "/:id",
   authMid,
   handler(async (req, res) => {
     const { id } = req.params;
-    if (!isValidId(id)) return res.status(BAD_REQUEST).send('Invalid notification id');
+    if (!isValidId(id))
+      return res.status(BAD_REQUEST).send("Invalid notification id");
 
     const doc = await NotificationModel.findById(id).lean();
-    if (!doc) return res.status(404).send('Notification không tồn tại');
+    if (!doc) return res.status(404).send("Notification không tồn tại");
 
     if (!req.user?.isAdmin && String(doc.user) !== String(req.user.id)) {
-      return res.status(UNAUTHORIZED).send('Không có quyền xoá thông báo này');
+      return res.status(UNAUTHORIZED).send("Không có quyền xoá thông báo này");
     }
 
     await NotificationModel.deleteOne({ _id: id });

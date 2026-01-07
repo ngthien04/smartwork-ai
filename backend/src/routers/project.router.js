@@ -141,7 +141,29 @@ router.post(
 
     const teamDoc = await TeamModel.findById(team);
     if (!teamDoc || teamDoc.isDeleted) return res.status(404).send('Team không tồn tại');
+
+    // Nếu PREMIUM hết hạn thì hạ về FREE để áp dụng hạn chế
+    if (teamDoc.plan === 'PREMIUM' && teamDoc.planExpiredAt) {
+      const now = new Date();
+      const expiredAt = new Date(teamDoc.planExpiredAt);
+      if (expiredAt <= now) {
+        teamDoc.plan = 'FREE';
+        teamDoc.planExpiredAt = undefined;
+        await teamDoc.save();
+      }
+    }
+
     if (!isLeaderOrAdmin(teamDoc, req.user.id)) return res.status(UNAUTHORIZED).send('Chỉ leader/admin mới tạo project');
+
+    // Nếu gói FREE và số thành viên > 3, chặn tạo project cho đến khi giảm member hoặc nâng cấp
+    if (teamDoc.plan === 'FREE') {
+      const memberCount = teamDoc.members?.length || 0;
+      if (memberCount > 3) {
+        return res
+          .status(BAD_REQUEST)
+          .send('Team gói FREE chỉ cho phép tối đa 3 thành viên. Vui lòng xoá bớt hoặc nâng cấp PREMIUM để tạo dự án.');
+      }
+    }
 
     try {
       const proj = await ProjectModel.create({

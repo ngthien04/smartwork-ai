@@ -22,6 +22,16 @@ export interface Team {
   slug: string;
   description?: string;
   members?: TeamMember[];
+  plan?: 'FREE' | 'PREMIUM';
+  planExpiredAt?: string; // ISO date string
+  planStatus?: {
+    isExpired: boolean;
+    isNearExpiry: boolean;
+    msLeft: number;
+    minutesLeft: number;
+    memberLimitExceeded: boolean;
+    expiredAt?: string;
+  };
   isArchived?: boolean;
   isDeleted?: boolean;
   createdAt?: string;
@@ -66,6 +76,16 @@ const teamService = {
 
   getBySlug(slug: string) {
     return api.get<Team>(`/teams/slug/${slug}`);
+  },
+
+  /**
+   * Chọn plan cho team (chỉ Leader)
+   */
+  selectPlan(teamId: string, plan: 'FREE' | 'PREMIUM') {
+    return api.put<{ _id: string; plan: 'FREE' | 'PREMIUM'; message: string }>(
+      `/teams/${teamId}/plan`,
+      { plan }
+    );
   },
 };
 

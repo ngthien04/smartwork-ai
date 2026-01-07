@@ -19,6 +19,7 @@ import notificationRouter from './notification.router.js';
 import noteRouter from './notes.router.js';
 import eventsRouter from './event.router.js';
 import adminRouter from './admin.router.js';
+import paymentRouter from './payment.router.js';
 
 
 const api = Router();
@@ -42,5 +43,6 @@ api.use('/notifications', notificationRouter);
 api.use('/notes', noteRouter);
 api.use('/events', eventsRouter);
 api.use('/admin', adminRouter);
+api.use('/payments', paymentRouter);
 
 export default api;

@@ -27,6 +27,16 @@ const TeamSchema = new Schema(
       defaultTaskStatus: { type: String, default: "todo" },
       defaultTaskPriority: { type: String, default: "normal" },
     },
+    plan: {
+      type: String,
+      enum: ['FREE', 'PREMIUM'],
+      default: 'FREE',
+      index: true,
+    },
+    planExpiredAt: {
+      type: Date,
+      index: true,
+    },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,
   },

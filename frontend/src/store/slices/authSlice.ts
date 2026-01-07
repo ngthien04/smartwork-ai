@@ -31,11 +31,13 @@ const persistAuth = (payload: StoredAuth) => {
   if (!payload.user || !payload.token) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('token');
+    window.dispatchEvent(new Event('auth-changed'));
     return;
   }
   const data = JSON.stringify(payload);
   localStorage.setItem(STORAGE_KEY, data);
   localStorage.setItem('token', payload.token);
+  window.dispatchEvent(new Event('auth-changed'));
 };
 
 const stored = loadStoredAuth();

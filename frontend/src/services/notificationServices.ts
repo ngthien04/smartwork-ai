@@ -1,23 +1,23 @@
-import api from './api';
+import api from "./api";
 
 export type NotificationType =
-  | 'task_assigned'
-  | 'task_due'
-  | 'comment_mention'
-  | 'sprint_status'
-  | 'ai_alert'
-  | 'task_comment'
-  | 'task_updated'
-  | 'task_status_changed'
-  | 'subtask_updated'
-  | 'attachment_added'
-  | 'attachment_removed';
-
+  | "task_assigned"
+  | "task_due"
+  | "task_deadline_soon"
+  | "comment_mention"
+  | "sprint_status"
+  | "ai_alert"
+  | "task_comment"
+  | "task_updated"
+  | "task_status_changed"
+  | "subtask_updated"
+  | "attachment_added"
+  | "attachment_removed";
 
 export interface Notification {
   _id: string;
   user: string | { _id: string; name: string; email?: string };
-  channel: 'web' | 'email' | 'mobile';
+  channel: "web" | "email" | "mobile";
   type: NotificationType;
   payload?: any;
   isRead: boolean;
@@ -33,12 +33,12 @@ export interface NotificationListResponse {
 }
 
 const notificationServices = {
-  list(params?: { page?: number; limit?: number; type?: string }) {
-    return api.get<NotificationListResponse>('/notifications', { params });
+  list(params?: { page?: number; limit?: number; type?: NotificationType }) {
+    return api.get<NotificationListResponse>("/notifications", { params });
   },
 
   unreadCount() {
-    return api.get<{ unread: number }>('/notifications/unread-count');
+    return api.get<{ unread: number }>("/notifications/unread-count");
   },
 
   markRead(id: string) {
@@ -46,10 +46,9 @@ const notificationServices = {
   },
 
   markAllRead(before?: string) {
-    
     return api.post<{ matched: number; modified: number }>(
-      '/notifications/mark-all-read',
-      before ? { before } : {},
+      "/notifications/mark-all-read",
+      before ? { before } : {}
     );
   },
 

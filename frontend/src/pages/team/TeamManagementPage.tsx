@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Card,
@@ -17,12 +17,16 @@ import {
   Spin,
   Modal,
 } from 'antd';
-import { UserAddOutlined, TeamOutlined } from '@ant-design/icons';
+import { UserAddOutlined, TeamOutlined, CrownOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import teamService, { type Team, type TeamMember, type TeamRole } from '@/services/teamService';
 import inviteService from '@/services/inviteService';
+import paymentService, { type PlanType } from '@/services/paymentService';
 import { useAuthContext } from '@/contexts/AuthContext';
+import PlanSelectionModal from '@/components/plan/PlanSelectionModal';
+import PaymentModal from '@/components/plan/PaymentModal';
+import PlanManagementModal from '@/components/plan/PlanManagementModal';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -75,6 +79,24 @@ export default function TeamManagementPage() {
 
   const [deleteTeamModalVisible, setDeleteTeamModalVisible] = useState(false);
 
+  // Plan selection & payment states
+  const [planSelectionModalVisible, setPlanSelectionModalVisible] = useState(false);
+  const [planManagementModalVisible, setPlanManagementModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
+  const [pendingTeamName, setPendingTeamName] = useState<string>('');
+  const [currentPayment, setCurrentPayment] = useState<any>(null);
+const [planAlert, setPlanAlert] = useState<{
+  visible: boolean;
+  type: 'expired' | 'near';
+  minutesLeft?: number;
+  memberLimitExceeded?: boolean;
+}>({
+  visible: false,
+  type: 'near',
+});
+const [planAlertKey, setPlanAlertKey] = useState<string | null>(null);
+
   // ---------------------------
   // Queries
   // ---------------------------
@@ -125,6 +147,9 @@ export default function TeamManagementPage() {
   const teams: Team[] = teamsQuery.data || [];
   const team: Team | null = teamQuery.data || null;
   const members: TeamMember[] = membersQuery.data || [];
+  const memberCount = members.length;
+  const isFreePlan = team?.plan === 'FREE';
+  const isLegacyFreeExceedLimit = isFreePlan && memberCount > 3; // team cũ vượt limit trước khi có validation
 
   const dataSource: MemberRow[] = useMemo(() => normalizeMembers(members), [members]);
 
@@ -139,6 +164,35 @@ export default function TeamManagementPage() {
   }, [user, members]);
 
   const isLeaderOrAdmin = myRole === 'leader' || myRole === 'admin';
+
+// Cảnh báo hết hạn / gần hết hạn gói (chỉ hiển thị cho leader/admin)
+useEffect(() => {
+  if (!team || !team.planStatus) return;
+  if (!isLeaderOrAdmin) return;
+
+  const status = team.planStatus;
+  let key: string | null = null;
+  let type: 'expired' | 'near' | null = null;
+
+  if (status.isExpired) {
+    type = 'expired';
+    key = `${team._id}-expired-${status.expiredAt || ''}`;
+  } else if (status.isNearExpiry) {
+    type = 'near';
+    key = `${team._id}-near-${status.expiredAt || ''}`;
+  }
+
+  if (!type || !key) return;
+  if (planAlertKey === key) return; 
+
+  setPlanAlert({
+    visible: true,
+    type,
+    minutesLeft: status.minutesLeft,
+    memberLimitExceeded: status.memberLimitExceeded,
+  });
+  setPlanAlertKey(key);
+}, [team, isLeaderOrAdmin, planAlertKey]);
 
   // ---------------------------
   // Mutations
@@ -156,14 +210,108 @@ export default function TeamManagementPage() {
       await queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] });
 
       const createdId = res.data?._id ? String(res.data._id) : '';
+      const createdName = res.data?.name || '';
+
       if (createdId) {
-        navigate(`/teams/${createdId}`, { replace: true });
-        await queryClient.invalidateQueries({ queryKey: ['team', createdId] });
-        await queryClient.invalidateQueries({ queryKey: ['team', createdId, 'members'] });
+        // Tự động mở modal chọn gói sau khi tạo team thành công
+        setPendingTeamId(createdId);
+        setPendingTeamName(createdName);
+        setPlanSelectionModalVisible(true);
       }
     },
     onError: (err: any) => message.error(err?.response?.data || 'Tạo team thất bại'),
   });
+
+  // Mutation: Chọn plan (chỉ cho FREE)
+  const selectPlanMutation = useMutation({
+    mutationFn: ({ teamId, plan }: { teamId: string; plan: PlanType }) =>
+      teamService.selectPlan(teamId, plan),
+    onSuccess: async () => {
+      message.success('Đã chọn gói FREE');
+      setPlanSelectionModalVisible(false);
+      await handlePlanSelectionComplete();
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data || 'Chọn gói thất bại');
+    },
+  });
+
+  // Mutation: Tạo payment
+  const createPaymentMutation = useMutation({
+    mutationFn: (teamId: string) => {
+      console.log('Creating payment for team:', teamId);
+      return paymentService.createPayment(teamId, 'PREMIUM');
+    },
+    onSuccess: async (res) => {
+      console.log('Payment created successfully:', res.data);
+      if (res.data?.payment) {
+        setCurrentPayment(res.data.payment);
+        setPlanSelectionModalVisible(false);
+        setPaymentModalVisible(true);
+      } else {
+        console.error('Payment data missing:', res.data);
+        message.error('Không nhận được thông tin payment từ server');
+      }
+    },
+    onError: (err: any) => {
+      console.error('Create payment error:', err);
+      message.error(err?.response?.data || 'Tạo payment thất bại');
+    },
+  });
+
+  // Handlers
+  const handleSelectPlan = (plan: PlanType) => {
+    console.log('handleSelectPlan called with plan:', plan, 'pendingTeamId:', pendingTeamId);
+    if (!pendingTeamId) {
+      message.error('Không tìm thấy Team ID');
+      return;
+    }
+    
+    if (plan === 'FREE') {
+      // FREE: Gọi API selectPlan ngay
+      selectPlanMutation.mutate({ teamId: pendingTeamId, plan });
+    } else if (plan === 'PREMIUM') {
+      // PREMIUM: Tạo payment ngay (không cần gọi selectPlan)
+      console.log('Creating payment for PREMIUM plan...');
+      createPaymentMutation.mutate(pendingTeamId);
+    }
+  };
+
+  const handlePaymentSuccess = async () => {
+    setPaymentModalVisible(false);
+    setCurrentPayment(null);
+    
+    // Refresh team data ngay lập tức
+    if (pendingTeamId) {
+      await queryClient.invalidateQueries({ queryKey: ['team', pendingTeamId] });
+      await queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] });
+    }
+    
+    // Nếu đang ở trang team đó, không cần navigate
+    if (routeTeamId === pendingTeamId) {
+      // Chỉ reset states, không navigate
+      setPendingTeamId(null);
+      setPendingTeamName('');
+    } else {
+      // Nếu không, navigate đến team đó
+      await handlePlanSelectionComplete();
+    }
+  };
+
+  const handlePlanSelectionComplete = async () => {
+    if (!pendingTeamId) return;
+
+    // Invalidate queries để refresh team data
+    await queryClient.invalidateQueries({ queryKey: ['team', pendingTeamId] });
+    await queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] });
+
+    // Navigate to team page
+    navigate(`/teams/${pendingTeamId}`, { replace: true });
+
+    // Reset states
+    setPendingTeamId(null);
+    setPendingTeamName('');
+  };
 
   // ✅ NEW: invite goes through inviteService (Mailjet email)
   const inviteMutation = useMutation({
@@ -194,7 +342,6 @@ export default function TeamManagementPage() {
       setEmail('');
       setRole('member');
 
-      // optional: nếu bạn có trang "invites list" thì invalidate thêm
       queryClient.invalidateQueries({ queryKey: ['invites'] });
       queryClient.invalidateQueries({ queryKey: ['invites', 'mine'] });
     },
@@ -295,6 +442,27 @@ export default function TeamManagementPage() {
     if (!email.trim()) return message.warning('Nhập email thành viên trước');
     if (!activeTeamId) return message.error('Chưa xác định được team');
 
+    // Nếu FREE và đã đủ 3 thành viên thì yêu cầu nâng cấp
+    if (isFreePlan && memberCount >= 3) {
+      Modal.confirm({
+        title: 'Nâng cấp PREMIUM để mời thêm thành viên',
+        content: (
+          <div>
+            <p>Gói FREE chỉ cho phép tối đa 3 thành viên (bao gồm Leader).</p>
+            <p>Vui lòng nâng cấp lên PREMIUM hoặc xoá bớt thành viên để tiếp tục.</p>
+          </div>
+        ),
+        okText: 'Nâng cấp PREMIUM',
+        cancelText: 'Để sau',
+        onOk: () => {
+          setPendingTeamId(activeTeamId);
+          setPendingTeamName(team?.name || '');
+          setPlanSelectionModalVisible(true);
+        },
+      });
+      return;
+    }
+
     inviteMutation.mutate({ teamId: activeTeamId, email: email.trim(), role });
   };
 
@@ -360,21 +528,22 @@ export default function TeamManagementPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-3 sm:p-4 md:p-6" style={{ minHeight: '100vh', overflowX: 'hidden', width: '100%', maxWidth: '100%' }}>
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
+          <div className="flex items-center gap-2">
           <Title level={2} className="m-0">
             Quản lý thành viên
           </Title>
-          <Text type="secondary">Team: {team.name}</Text>
+          </div>
           {teams.length > 1 && (
             <div className="mt-2">
               <Text type="secondary" className="mr-2">
-                Chuyển team:
+                Team:
               </Text>
               <Select
-                style={{ minWidth: 220 }}
+                className="w-full sm:w-auto sm:min-w-[200px]"
                 value={team._id}
                 onChange={(value) => {
                   navigate(`/teams/${value}`);
@@ -390,7 +559,24 @@ export default function TeamManagementPage() {
           )}
         </div>
 
-        <Space>
+        <Space className="flex-wrap">
+          {/* Nút quản lý gói - chỉ Leader mới thấy */}
+          {isLeaderOrAdmin && (
+            <Button
+              icon={team.plan === 'PREMIUM' ? <CrownOutlined /> : null}
+              onClick={() => {
+                setPlanManagementModalVisible(true);
+              }}
+              style={{
+                background: team.plan === 'PREMIUM' ? '#f59e0b' : '#f3f4f6',
+                borderColor: team.plan === 'PREMIUM' ? '#f59e0b' : '#cbd5e1',
+                color: team.plan === 'PREMIUM' ? '#fff' : '#374151',
+              }}
+            >
+              {team.plan === 'PREMIUM' ? 'PREMIUM' : 'Free'}
+            </Button>
+          )}
+          
           <Button icon={<TeamOutlined />} onClick={() => navigate('/projects')}>
             Xem dự án liên quan
           </Button>
@@ -426,27 +612,17 @@ export default function TeamManagementPage() {
 
       {/* Stats */}
       <Row gutter={[16, 16]}>
-        <Col xs={12} md={6}>
+        <Col xs={24} md={12}>
           <Card>
             <Statistic title="Tổng thành viên" value={members.length} />
           </Card>
         </Col>
-        <Col xs={12} md={6}>
+        <Col xs={24} md={12}>
           <Card>
             <Statistic
-              title="Leader/Admin"
+              title="Leader"
               value={members.filter((m) => m.role === 'leader' || m.role === 'admin').length}
             />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card>
-            <Statistic title="Lời mời đang chờ" value={0} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card>
-            <Statistic title="Vai trò AI gợi ý" value="—" />
           </Card>
         </Col>
       </Row>
@@ -455,15 +631,40 @@ export default function TeamManagementPage() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={16}>
           <Card title="Danh sách thành viên" extra={<Text type="secondary">{members.length} người</Text>}>
+            {isLegacyFreeExceedLimit && (
+              <Alert
+                className="mb-3"
+                type="warning"
+                showIcon
+                message="Team đang dùng gói FREE nhưng đã có hơn 3 thành viên."
+                description="Vui lòng nâng cấp lên PREMIUM để giữ đủ thành viên, hoặc xoá bớt thành viên để về đúng giới hạn."
+                action={
+                  <Button
+                    type="primary"
+                    size="small"
+                    onClick={() => {
+                      setPendingTeamId(activeTeamId);
+                      setPendingTeamName(team?.name || '');
+                      setPlanSelectionModalVisible(true);
+                    }}
+                  >
+                    Nâng cấp PREMIUM
+                  </Button>
+                }
+              />
+            )}
+
+            <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
             <Table
               pagination={false}
               dataSource={dataSource}
               columns={[
-                { title: 'Tên', dataIndex: 'name' },
-                { title: 'Email', dataIndex: 'email' },
+                  { title: 'Tên', dataIndex: 'name', width: 150 },
+                  { title: 'Email', dataIndex: 'email', width: 200 },
                 {
                   title: 'Vai trò',
                   dataIndex: 'role',
+                    width: 120,
                   render: (roleValue: TeamRole) => (
                     <Tag color={roleValue === 'leader' ? 'gold' : roleValue === 'admin' ? 'blue' : 'default'}>
                       {roleValue}
@@ -473,15 +674,17 @@ export default function TeamManagementPage() {
                 {
                   title: 'Tham gia',
                   dataIndex: 'joinedAt',
+                    width: 120,
                   render: (value: string | undefined) => (value ? new Date(value).toLocaleDateString() : '—'),
                 },
                 {
                   title: 'Thao tác',
+                    width: 200,
                   render: (_: any, record: MemberRow) => {
                     const meId = user?._id;
                     const isMe = meId && record.userId === meId;
                     return (
-                      <Space>
+                        <Space size="small" wrap>
                         <Button size="small" disabled={!isLeaderOrAdmin} onClick={() => showChangeRoleModal(record)}>
                           Đổi vai trò
                         </Button>
@@ -498,11 +701,14 @@ export default function TeamManagementPage() {
                   },
                 },
               ]}
+                scroll={{ x: 'max-content', y: 'calc(100vh - 500px)' }}
+                size="middle"
             />
+            </div>
             <Alert
               className="mt-3"
               type="warning"
-              message="Chỉ leader/admin mới được mời thêm hoặc chỉnh sửa vai trò thành viên. Leader cuối cùng không thể tự xoá mình."
+              message="Chỉ leader mới được mời thêm hoặc chỉnh sửa vai trò thành viên. Leader cuối cùng không thể tự xoá mình."
               showIcon
             />
           </Card>
@@ -518,17 +724,44 @@ export default function TeamManagementPage() {
                 icon={<UserAddOutlined />}
                 onClick={handleInvite}
                 loading={inviteMutation.isPending}
-                disabled={!isLeaderOrAdmin}
+                disabled={!isLeaderOrAdmin || (isFreePlan && memberCount >= 3)}
               >
                 Gửi lời mời
               </Button>,
             ]}
           >
+            {isFreePlan && (
+              <Alert
+                className="mb-3"
+                type={memberCount >= 3 ? 'warning' : 'info'}
+                showIcon
+                message={
+                  memberCount >= 3
+                    ? 'Gói FREE đã đạt giới hạn 3 thành viên. Nâng cấp PREMIUM để mời thêm.'
+                    : 'Gói FREE giới hạn tối đa 3 thành viên (bao gồm Leader).'
+                }
+                action={
+                  memberCount >= 3 ? (
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => {
+                        setPendingTeamId(activeTeamId);
+                        setPendingTeamName(team?.name || '');
+                        setPlanSelectionModalVisible(true);
+                      }}
+                    >
+                      Nâng cấp PREMIUM
+                    </Button>
+                  ) : null
+                }
+              />
+            )}
             {!isLeaderOrAdmin && (
               <Alert
                 className="mb-3"
                 type="info"
-                message="Chỉ leader/admin mới có thể mời thành viên. Hãy liên hệ leader team nếu bạn cần thêm người."
+                message="Chỉ leader mới có thể mời thành viên. Hãy liên hệ leader team nếu bạn cần thêm người."
                 showIcon
               />
             )}
@@ -546,7 +779,6 @@ export default function TeamManagementPage() {
                 disabled={!isLeaderOrAdmin || inviteMutation.isPending}
               >
                 <Option value="member">Member</Option>
-                <Option value="admin">Admin</Option>
                 <Option value="leader">Leader</Option>
               </Select>
 
@@ -608,7 +840,6 @@ export default function TeamManagementPage() {
           <Text>Vai trò hiện tại: {memberEditingRole?.role}</Text>
           <Select value={newRoleValue} style={{ width: 200 }} onChange={(value: TeamRole) => setNewRoleValue(value)}>
             <Option value="member">Member</Option>
-            <Option value="admin">Admin</Option>
             <Option value="leader">Leader</Option>
           </Select>
         </Space>
@@ -629,6 +860,94 @@ export default function TeamManagementPage() {
           Bạn có chắc muốn giải tán team <b>{team.name}</b>? Thao tác này không thể hoàn tác.
         </p>
       </Modal>
+
+      {/* POPUP cảnh báo gói hết hạn / sắp hết hạn */}
+      <Modal
+        open={planAlert.visible}
+        onCancel={() => setPlanAlert((prev) => ({ ...prev, visible: false }))}
+        footer={[
+          <Button key="close" onClick={() => setPlanAlert((prev) => ({ ...prev, visible: false }))}>
+            Để sau
+          </Button>,
+          <Button
+            key="manage"
+            type="primary"
+            onClick={() => {
+              setPlanAlert((prev) => ({ ...prev, visible: false }));
+              setPlanManagementModalVisible(true);
+              if (team?._id) {
+                setPendingTeamId(team._id);
+                setPendingTeamName(team.name);
+              }
+            }}
+          >
+            Gia hạn / Quản lý gói
+          </Button>,
+        ]}
+      >
+        {planAlert.type === 'expired' ? (
+          <div>
+            <p>
+              Gói PREMIUM của team <b>{team?.name}</b> đã hết hạn.
+            </p>
+            <p>
+              Vui lòng gia hạn để tiếp tục dùng tính năng PREMIUM. Nếu không gia hạn, team sẽ ở gói FREE và giới hạn tối đa 3 thành viên.
+            </p>
+            {planAlert.memberLimitExceeded && (
+              <p style={{ color: '#d4380d' }}>
+                Hiện team đang vượt quá 3 thành viên. Bạn cần xoá bớt hoặc gia hạn gói để tiếp tục.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p>
+              Gói PREMIUM của team <b>{team?.name}</b> sắp hết hạn.
+            </p>
+            <p>
+              {typeof planAlert.minutesLeft === 'number'
+                ? `Còn khoảng ${planAlert.minutesLeft} phút. Vui lòng gia hạn để tránh gián đoạn.`
+                : 'Vui lòng gia hạn để tránh gián đoạn.'}
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* MODAL CHỌN GÓI */}
+      <PlanSelectionModal
+        open={planSelectionModalVisible}
+        teamId={pendingTeamId || ''}
+        teamName={pendingTeamName}
+        onSelectPlan={handleSelectPlan}
+        onCancel={() => {
+          setPlanSelectionModalVisible(false);
+          // Chỉ đóng modal, không navigate (user có thể mở lại sau)
+        }}
+        loading={selectPlanMutation.isPending || createPaymentMutation.isPending}
+      />
+
+      {/* MODAL QUẢN LÝ GÓI */}
+      <PlanManagementModal
+        open={planManagementModalVisible}
+        team={team}
+        onCancel={() => {
+          setPlanManagementModalVisible(false);
+        }}
+      />
+
+      {/* MODAL THANH TOÁN */}
+      <PaymentModal
+        open={paymentModalVisible}
+        payment={currentPayment}
+        teamId={pendingTeamId || ''}
+        teamName={pendingTeamName}
+        onSuccess={handlePaymentSuccess}
+        onCancel={() => {
+          setPaymentModalVisible(false);
+          setCurrentPayment(null);
+          // Chỉ đóng modal, không navigate (user có thể mở lại sau)
+        }}
+      />
     </div>
   );
 }

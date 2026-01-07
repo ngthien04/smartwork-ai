@@ -1,22 +1,32 @@
-import { useEffect, useState } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { 
-  SearchOutlined, 
-  MenuFoldOutlined, 
+import { useEffect, useState } from "react";
+import { useSelector, useDispatch } from "react-redux";
+import {
+  SearchOutlined,
+  MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
-  BellOutlined
-} from '@ant-design/icons';
-import { Badge, Dropdown, List, Spin, Empty, Typography, Popconfirm } from 'antd';
-import type { MenuProps } from 'antd';
-import { useLocation, useNavigate } from 'react-router-dom';
+  BellOutlined,
+} from "@ant-design/icons";
+import {
+  Badge,
+  Dropdown,
+  List,
+  Spin,
+  Empty,
+  Typography,
+  Popconfirm,
+} from "antd";
+import type { MenuProps } from "antd";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { Button } from '@/components/ui/button';
-import type { RootState } from '@/types';
-import { toggleSidebar, setCommandPaletteOpen } from '@/store/slices/uiSlice';
-import notificationServices, { type Notification } from '@/services/notificationServices';
-import { logout } from '@/store/slices/authSlice';
-import { ROUTES } from '@/routes/path';
+import { Button } from "@/components/ui/button";
+import type { RootState } from "@/types";
+import { toggleSidebar, setCommandPaletteOpen } from "@/store/slices/uiSlice";
+import notificationServices, {
+  type Notification,
+} from "@/services/notificationServices";
+import { logout } from "@/store/slices/authSlice";
+import { ROUTES } from "@/routes/path";
 
 const { Text } = Typography;
 
@@ -25,10 +35,11 @@ export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const sidebarCollapsed = useSelector((state: RootState) => state.ui.sidebarCollapsed);
+  const sidebarCollapsed = useSelector(
+    (state: RootState) => state.ui.sidebarCollapsed
+  );
   const { user } = useSelector((state: RootState) => state.auth);
 
-  
   const [notiOpen, setNotiOpen] = useState(false);
   const [notiLoading, setNotiLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -43,13 +54,12 @@ export default function Header() {
     navigate(ROUTES.AUTH);
   };
 
-  
   const fetchUnreadCount = async () => {
     try {
       const res = await notificationServices.unreadCount();
       setUnreadCount(res.data.unread);
     } catch (e) {
-      console.error('fetchUnreadCount error', e);
+      console.error("fetchUnreadCount error", e);
     }
   };
 
@@ -59,7 +69,7 @@ export default function Header() {
       const res = await notificationServices.list({ page: 1, limit: 10 });
       setNotifications(res.data.items);
     } catch (e) {
-      console.error('fetchNotifications error', e);
+      console.error("fetchNotifications error", e);
     } finally {
       setNotiLoading(false);
     }
@@ -67,7 +77,7 @@ export default function Header() {
 
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000); 
+    const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -86,11 +96,11 @@ export default function Header() {
           ...n,
           isRead: true,
           readAt: n.readAt || new Date().toISOString(),
-        })),
+        }))
       );
       setUnreadCount(0);
     } catch (e) {
-      console.error('markAllRead error', e);
+      console.error("markAllRead error", e);
     }
   };
 
@@ -99,12 +109,18 @@ export default function Header() {
       await notificationServices.markRead(id);
       setNotifications((prev) =>
         prev.map((n) =>
-          n._id === id ? { ...n, isRead: true, readAt: n.readAt || new Date().toISOString() } : n,
-        ),
+          n._id === id
+            ? {
+                ...n,
+                isRead: true,
+                readAt: n.readAt || new Date().toISOString(),
+              }
+            : n
+        )
       );
       setUnreadCount((c) => Math.max(0, c - 1));
     } catch (e) {
-      console.error('markRead error', e);
+      console.error("markRead error", e);
     }
   };
 
@@ -117,77 +133,87 @@ export default function Header() {
         setUnreadCount((c) => Math.max(0, c - 1));
       }
     } catch (e) {
-      console.error('delete notification error', e);
+      console.error("delete notification error", e);
     }
   };
 
-  
   const renderNotificationText = (n: Notification) => {
     const payload = n.payload || {};
 
     switch (n.type) {
-      case 'task_comment':
+      case "task_comment":
         return (
           <>
-            <Text strong>{payload.authorName || 'Ai đó'}</Text>{' '}
-            đã bình luận trong task{' '}
-            <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>
+            <Text strong>{payload.authorName || "Ai đó"}</Text> đã bình luận
+            trong task{" "}
+            <Text strong>{payload.taskTitle || "Không rõ task"}</Text>
           </>
         );
 
-      case 'comment_mention':
+      case "comment_mention":
         return (
           <>
-            <Text strong>{payload.authorName || 'Ai đó'}</Text>{' '}
-            đã nhắc tới bạn trong task{' '}
-            <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>
+            <Text strong>{payload.authorName || "Ai đó"}</Text> đã nhắc tới bạn
+            trong task{" "}
+            <Text strong>{payload.taskTitle || "Không rõ task"}</Text>
           </>
         );
 
-      case 'task_assigned':
+      case "task_assigned":
         return (
           <>
-            Bạn được giao task{' '}
-            <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>
+            Bạn được giao task{" "}
+            <Text strong>{payload.taskTitle || "Không rõ task"}</Text>
           </>
         );
 
-      case 'task_due':
+      case "task_due":
         return (
           <>
-            Task{' '}
-            <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>{' '}
-            sắp đến hạn
+            Task <Text strong>{payload.taskTitle || "Không rõ task"}</Text> sắp
+            đến hạn
           </>
         );
 
-      case 'sprint_status':
-        return <>Cập nhật sprint: {payload.sprintName || ''}</>;
+      case "sprint_status":
+        return <>Cập nhật sprint: {payload.sprintName || ""}</>;
 
-      case 'ai_alert':
-        return <>AI cảnh báo: {payload.message || ''}</>;
-      
-      case 'task_updated':
+      case "ai_alert":
+        return <>AI cảnh báo: {payload.message || ""}</>;
+
+      case "task_updated":
         return (
           <>
-            Task <Text strong>{payload.taskTitle || 'Không rõ task'}</Text> vừa được cập nhật
+            Task <Text strong>{payload.taskTitle || "Không rõ task"}</Text> vừa
+            được cập nhật
           </>
         );
 
-      case 'task_status_changed':
+      case "task_status_changed":
         return (
           <>
-            Trạng thái task <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>{' '}
-            đã đổi sang <Text strong>{payload.status}</Text>
+            Trạng thái task{" "}
+            <Text strong>{payload.taskTitle || "Không rõ task"}</Text> đã đổi
+            sang <Text strong>{payload.status}</Text>
           </>
         );
 
-      case 'subtask_updated':
+      case "subtask_updated":
         return (
           <>
-            Subtask <Text strong>{payload.title || 'Không rõ subtask'}</Text>{' '}
-            ({payload.action || 'updated'}) trong task{' '}
-            <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>
+            Subtask <Text strong>{payload.title || "Không rõ subtask"}</Text> (
+            {payload.action || "updated"}) trong task{" "}
+            <Text strong>{payload.taskTitle || "Không rõ task"}</Text>
+          </>
+        );
+      case "task_deadline_soon":
+        return (
+          <>
+            Task <Text strong>{payload.taskTitle || "Không rõ task"}</Text> sắp
+            đến hạn
+            {typeof payload.daysLeft === "number"
+              ? ` (còn ${payload.daysLeft} ngày)`
+              : ""}
           </>
         );
       default:
@@ -197,9 +223,10 @@ export default function Header() {
 
   const notificationMenu = (
     <div className="bg-white shadow-lg rounded-md w-96 border border-gray-100">
-      {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between border-b border-gray-200">
-        <Text strong className="text-gray-800">Thông báo</Text>
+        <Text strong className="text-gray-800">
+          Thông báo
+        </Text>
         {notifications.length > 0 && (
           <Button
             variant="ghost"
@@ -211,8 +238,7 @@ export default function Header() {
         )}
       </div>
 
-      {/* Body */}
-      <div className="p-4 max-h-96 overflow-y-auto"> {/* <-- thêm p-4 ở đây */}
+      <div className="p-5 max-h-96 overflow-y-auto">
         {notiLoading ? (
           <div className="flex justify-center items-center py-10">
             <Spin />
@@ -229,7 +255,7 @@ export default function Header() {
             renderItem={(item) => (
               <List.Item
                 className={`px-4 py-3 rounded-lg mb-2 transition-colors ${
-                  item.isRead ? 'bg-white' : 'bg-blue-50'
+                  item.isRead ? "bg-white" : "bg-blue-50"
                 } hover:bg-gray-50`}
                 actions={[
                   !item.isRead && (
@@ -261,7 +287,9 @@ export default function Header() {
                       {!item.isRead && (
                         <span className="w-2 h-2 rounded-full bg-blue-500 mt-1" />
                       )}
-                      <div className="text-sm text-gray-700">{renderNotificationText(item)}</div>
+                      <div className="text-sm text-gray-700">
+                        {renderNotificationText(item)}
+                      </div>
                     </div>
                   }
                   description={
@@ -280,26 +308,24 @@ export default function Header() {
   const isAdminUser = !!user?.isAdmin;
   const isOnAdminPage = location.pathname.startsWith(ROUTES.ADMIN);
 
-  const userMenuItems: MenuProps['items'] = [];
+  const userMenuItems: MenuProps["items"] = [];
 
   if (isAdminUser) {
     userMenuItems.push({
-      key: 'switch-admin',
-      label: isOnAdminPage ? 'Trang chủ' : 'Trang quản trị',
+      key: "switch-admin",
+      label: isOnAdminPage ? "Trang chủ" : "Trang quản trị",
       onClick: () => {
         navigate(
-          isOnAdminPage
-            ? ROUTES.DASHBOARD
-            : `${ROUTES.ADMIN}?tab=users`
+          isOnAdminPage ? ROUTES.DASHBOARD : `${ROUTES.ADMIN}?tab=users`
         );
       },
     });
-    userMenuItems.push({ type: 'divider' } as any);
+    userMenuItems.push({ type: "divider" } as any);
   }
 
   userMenuItems.push({
-    key: 'logout',
-    label: 'Đăng xuất',
+    key: "logout",
+    label: "Đăng xuất",
     onClick: handleLogout,
   });
 
@@ -314,7 +340,7 @@ export default function Header() {
         >
           {sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
         </Button>
-        
+
         <div className="flex items-center">
           <h1 className="text-xl font-bold text-gray-800 m-0">SmartWork AI</h1>
         </div>
@@ -332,7 +358,7 @@ export default function Header() {
 
         {/* Bell + dropdown thông báo */}
         <Dropdown
-          trigger={['click']}
+          trigger={["click"]}
           open={notiOpen}
           onOpenChange={handleNotiOpenChange}
           dropdownRender={() => notificationMenu}
@@ -351,13 +377,17 @@ export default function Header() {
           </div>
         </Dropdown>
 
-        <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
+        <Dropdown
+          menu={{ items: userMenuItems }}
+          trigger={["click"]}
+          placement="bottomRight"
+        >
           <div className="flex items-center cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
             <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-2">
               <UserOutlined className="text-sm" />
             </div>
             <span className="text-sm font-medium text-gray-700">
-              {user?.name || 'User'}
+              {user?.name || "User"}
             </span>
           </div>
         </Dropdown>

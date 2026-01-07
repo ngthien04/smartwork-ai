@@ -48,6 +48,94 @@ function isLeaderOrAdmin(teamDoc, user) {
   return role === 'leader' || role === 'admin';
 }
 
+/**
+ * Helper function để check plan expiry và tự động hạ về FREE nếu hết hạn
+ * kiểm tra giới hạn thành viên cho FREE plan
+ * @param {Object} team - Team document
+ * @returns {Object} Team với plan đã được cập nhật nếu cần
+ */
+async function checkAndUpdatePlanExpiry(team) {
+  if (!team) return team;
+
+  const now = new Date();
+  let planChanged = false;
+
+  // Nếu đang PREMIUM và hết hạn, hạ về FREE
+  if (team.plan === 'PREMIUM' && team.planExpiredAt) {
+    const expiredAt = new Date(team.planExpiredAt);
+    if (expiredAt <= now) {
+      team.plan = 'FREE';
+      team.planExpiredAt = undefined;
+      planChanged = true;
+    }
+  }
+
+  // Tính toán trạng thái gói để frontend hiển thị cảnh báo
+  const planStatus = {
+    isExpired: false,
+    isNearExpiry: false,
+    msLeft: 0,
+    minutesLeft: 0,
+    memberLimitExceeded: false,
+    expiredAt: team.planExpiredAt,
+  };
+
+  if (team.plan === 'PREMIUM' && team.planExpiredAt) {
+    const expiredAt = new Date(team.planExpiredAt);
+    const msLeft = expiredAt.getTime() - now.getTime();
+    planStatus.msLeft = Math.max(msLeft, 0);
+    planStatus.minutesLeft = Math.max(Math.floor(msLeft / 60000), 0);
+    if (msLeft <= 0) {
+      planStatus.isExpired = true;
+    } else if (msLeft <= 10 * 60 * 1000) {
+      // Gần hết hạn: trong vòng 10 phút tới (đang test gói 5 phút nên sẽ hit nhanh)
+      planStatus.isNearExpiry = true;
+    }
+  }
+
+  // Nếu team đang ở FREE, kiểm tra member limit
+  // Nếu vượt quá 3 thành viên, giữ nguyên (không tự động xóa, chỉ cảnh báo)
+  // Logic này để xử lý trường hợp team đã có > 3 thành viên từ trước khi có validation
+  if (team.plan === 'FREE') {
+    const currentMemberCount = team.members?.length || 0;
+    if (currentMemberCount > 3) {
+      planStatus.memberLimitExceeded = true;
+      // Log warning nhưng không tự động xóa member
+      // Leader cần tự xử lý hoặc nâng cấp lên PREMIUM
+      console.warn(`Team ${team._id} (FREE) có ${currentMemberCount} thành viên, vượt quá giới hạn 3. Cần nâng cấp lên PREMIUM hoặc xóa bớt thành viên.`);
+    }
+  }
+
+  if (planChanged) {
+    await team.save();
+  }
+
+  // Gắn planStatus (không lưu DB, chỉ attach vào doc trả về)
+  team.planStatus = planStatus;
+
+  return team;
+}
+
+/**
+ * Helper function để check xem team có quyền dùng Premium features không
+ * @param {Object} team - Team document
+ * @returns {boolean} true nếu team có quyền Premium và chưa hết hạn
+ */
+function hasPremiumAccess(team) {
+  if (!team || team.plan !== 'PREMIUM') {
+    return false;
+  }
+
+  if (!team.planExpiredAt) {
+    return false; // Premium nhưng không có thời hạn (lỗi data)
+  }
+
+  const now = new Date();
+  const expiredAt = new Date(team.planExpiredAt);
+
+  return expiredAt > now;
+}
+
 function canInvite(teamDoc, user) {
   
   return isLeaderOrAdmin(teamDoc, user);
@@ -81,8 +169,11 @@ router.get(
   authMid,
   handler(async (req, res) => {
     const { teamId } = req.params;
-    const team = await TeamModel.findById(teamId).lean();
+    let team = await TeamModel.findById(teamId);
     if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
+    
+    // Check và cập nhật plan expiry nếu cần
+    team = await checkAndUpdatePlanExpiry(team);
 
     const isMember = team.members?.some(
       (m) => String(m.user) === String(req.user.id)
@@ -93,7 +184,12 @@ router.get(
       return res.status(UNAUTHORIZED).send('Bạn không thuộc team này');
     }
 
-    res.send(team);
+    const payload = team.toObject ? team.toObject() : team;
+    // Ensure planStatus được trả ra
+    if (!payload.planStatus && team.planStatus) {
+      payload.planStatus = team.planStatus;
+    }
+    res.send(payload);
   })
 );
 
@@ -134,7 +230,57 @@ router.post(
   })
 );
 
+/**
+ * PUT /teams/:teamId/plan
+ * Chọn plan cho team (chỉ Leader)
+ */
+router.put(
+  '/:teamId/plan',
+  authMid,
+  handler(async (req, res) => {
+    const { teamId } = req.params;
+    const { plan } = req.body || {};
 
+    if (!plan || !['FREE', 'PREMIUM'].includes(plan)) {
+      return res.status(BAD_REQUEST).send('Plan không hợp lệ. Chỉ hỗ trợ FREE hoặc PREMIUM');
+    }
+
+    const team = await TeamModel.findById(teamId);
+    if (!team || team.isDeleted) return res.status(404).send('Team không tồn tại');
+
+    // Chỉ Leader mới được chọn plan
+    if (!isLeaderOrAdmin(team, req.user)) {
+      return res.status(UNAUTHORIZED).send('Chỉ Leader mới được chọn gói cho team');
+    }
+
+    // Nếu chọn FREE, kiểm tra member count
+    if (plan === 'FREE') {
+      const currentMemberCount = team.members?.length || 0;
+      if (currentMemberCount > 3) {
+        return res.status(BAD_REQUEST).send('Team đã có hơn 3 thành viên. Không thể chuyển về gói FREE. Vui lòng xóa bớt thành viên trước.');
+      }
+    }
+
+    // Cập nhật plan
+    team.plan = plan;
+    await team.save();
+
+    await recordActivity({
+      team: team._id,
+      actor: req.user.id,
+      verb: 'team_plan_changed',
+      targetType: 'team',
+      targetId: team._id,
+      metadata: { plan },
+    });
+
+    res.send({
+      _id: team._id,
+      plan: team.plan,
+      message: `Đã chuyển team sang gói ${plan}`,
+    });
+  })
+);
 
 router.put(
   '/:teamId',
@@ -302,9 +448,17 @@ router.post(
     const user = await UserModel.findById(userId);
     if (!user) return res.status(404).send('User không tồn tại');
 
-    
+    // ✅ VALIDATION: Kiểm tra member limit cho FREE plan
     const exists = team.members?.some((m) => String(m.user) === String(userId));
     if (!exists) {
+      // Nếu team là FREE và đã đủ 3 thành viên (bao gồm leader)
+      if (team.plan === 'FREE') {
+        const currentMemberCount = team.members?.length || 0;
+        if (currentMemberCount >= 3) {
+          return res.status(BAD_REQUEST).send('Gói FREE chỉ cho phép tối đa 3 thành viên. Vui lòng nâng cấp lên PREMIUM để thêm thành viên.');
+        }
+      }
+      
       team.members.push({ user: user._id, role, joinedAt: new Date() });
       await team.save();
     } else {
