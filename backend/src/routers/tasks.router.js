@@ -242,8 +242,68 @@ router.get(
   }),
 );
 
+router.get(
+  '/deadlines',
+  authMid,
+  handler(async (req, res) => {
+    const from = req.query.from ? new Date(String(req.query.from)) : null;
+    const to = req.query.to ? new Date(String(req.query.to)) : null;
+    if (!from || !to || isNaN(from) || isNaN(to)) {
+      return res.status(400).send('Invalid from/to');
+    }
 
+    // lấy teamIds giống logic ở GET /
+    const user = await UserModel.findById(req.user.id, {
+      roles: 1,
+      isAdmin: 1,
+    }).lean();
 
+    const teamIds = (user?.roles || [])
+      .map((r) => r.team)
+      .filter(Boolean)
+      .map((id) => toObjectId(id));
+
+    const teamQuery = req.query.team;
+    const filter = {
+      isDeleted: { $ne: true },
+      dueDate: { $exists: true, $gte: from, $lte: to },
+    };
+
+    if (teamQuery) {
+      const requestedTeamId = toObjectId(teamQuery);
+      if (!user?.isAdmin) {
+        const canAccess = teamIds.some((tId) => String(tId) === String(requestedTeamId));
+        if (!canAccess) return res.status(UNAUTHORIZED).send('Không có quyền xem team này');
+      }
+      filter.team = requestedTeamId;
+    } else {
+      if (!user?.isAdmin) {
+        if (!teamIds.length) return res.send([]);
+        filter.team = { $in: teamIds };
+      }
+    }
+
+    const tasks = await TaskModel.find(
+      filter,
+      { title: 1, dueDate: 1, priority: 1, status: 1, project: 1, team: 1 }
+    )
+      .populate('project', 'name')
+      .populate('team', 'name')
+      .lean();
+
+    res.send(
+      tasks.map((t) => ({
+        id: String(t._id),
+        title: t.title,
+        dueDate: t.dueDate,
+        priority: t.priority,
+        status: t.status,
+        projectName: t.project?.name || '',
+        teamName: t.team?.name || '',
+      }))
+    );
+  })
+);
 
 router.get(
   '/:taskId',

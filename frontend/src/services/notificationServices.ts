@@ -3,6 +3,7 @@ import api from './api';
 export type NotificationType =
   | 'task_assigned'
   | 'task_due'
+  | 'task_deadline_soon'
   | 'comment_mention'
   | 'sprint_status'
   | 'ai_alert'
@@ -12,7 +13,6 @@ export type NotificationType =
   | 'subtask_updated'
   | 'attachment_added'
   | 'attachment_removed';
-
 
 export interface Notification {
   _id: string;
@@ -33,7 +33,7 @@ export interface NotificationListResponse {
 }
 
 const notificationServices = {
-  list(params?: { page?: number; limit?: number; type?: string }) {
+  list(params?: { page?: number; limit?: number; type?: NotificationType }) {
     return api.get<NotificationListResponse>('/notifications', { params });
   },
 
@@ -46,7 +46,6 @@ const notificationServices = {
   },
 
   markAllRead(before?: string) {
-    
     return api.post<{ matched: number; modified: number }>(
       '/notifications/mark-all-read',
       before ? { before } : {},

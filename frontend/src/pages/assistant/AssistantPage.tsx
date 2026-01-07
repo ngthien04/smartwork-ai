@@ -186,9 +186,6 @@ Search tasks không tìm theo description`,
               <Space>
                 <MessageOutlined />
                 <span>Chat</span>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  (hỏi đáp nhanh trong app)
-                </Text>
               </Space>
             }
             extra={

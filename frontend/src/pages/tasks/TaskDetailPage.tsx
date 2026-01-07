@@ -587,18 +587,82 @@ export default function TaskDetailPage() {
     }
   };
 
+  function renderActivityText(a: any) {
+    const actor = a.actor;
+    const actorName = actor?.name || 'Ai đó';
+
+    const meta = a.metadata || {};
+    const title = meta?.title || meta?.subtaskTitle || meta?.name || '';
+
+    switch (a.verb) {
+      case 'created':
+        return `${actorName} đã tạo task`;
+
+      case 'updated':
+        return `${actorName} đã cập nhật task`;
+
+      case 'deleted':
+        return `${actorName} đã xoá task`;
+
+      case 'subtask_created':
+        return `${actorName} đã tạo subtask${title ? ` “${title}”` : ''}`;
+
+      case 'subtask_updated':
+        if (meta?.isDone === true) {
+          return `${actorName} đã hoàn thành subtask${title ? ` “${title}”` : ''}`;
+        }
+        if (meta?.isDone === false) {
+          return `${actorName} đã mở lại subtask${title ? ` “${title}”` : ''}`;
+        }
+        return `${actorName} đã cập nhật subtask${title ? ` “${title}”` : ''}`;
+
+      case 'subtask_toggled':
+        return `${actorName} đã thay đổi trạng thái subtask${title ? ` “${title}”` : ''}`;
+
+      case 'commented':
+        return `${actorName} đã bình luận`;
+
+      case 'assigned':
+        return `${actorName} đã giao task`;
+
+      case 'task_status_changed':
+        return `${actorName} đã chuyển trạng thái task sang "${meta?.status}"`;
+
+      case 'attachment_added':
+        return `${actorName} đã thêm tệp đính kèm`;
+
+      case 'attachment_removed':
+        return `${actorName} đã xoá tệp đính kèm`;
+
+      default:
+        return `${actorName} đã thực hiện một hành động`;
+    }
+  }
+
+  function formatTime(date?: string) {
+    if (!date) return '';
+    return new Date(date).toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  }
 
   const activityItems = useMemo(() => {
     if (!activities.length) return [];
-    return activities.map((a) => {
-      const actor: any = a.actor;
-      const actorName = actor?.name || 'Ai đó';
-      const time = a.createdAt ? new Date(a.createdAt).toLocaleString() : '';
-      const action = a.verb;
-      return {
-        children: `${time} · ${actorName} ${action}`,
-      };
-    });
+
+    return activities.map((a) => ({
+      children: (
+        <span>
+          <span style={{ color: '#999', marginRight: 6 }}>
+            {formatTime(a.createdAt)}
+          </span>
+          {renderActivityText(a)}
+        </span>
+      ),
+    }));
   }, [activities]);
 
   const handleReAnalyze = async () => {
@@ -1206,7 +1270,6 @@ export default function TaskDetailPage() {
               </Card>
             </Col>
 
-            {/* ACTIVITIES */}
             <Col span={12}>
               <Card
                 title="Hoạt động gần đây"

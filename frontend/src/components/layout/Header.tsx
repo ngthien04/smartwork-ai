@@ -190,6 +190,13 @@ export default function Header() {
             <Text strong>{payload.taskTitle || 'Không rõ task'}</Text>
           </>
         );
+      case 'task_deadline_soon':
+        return (
+          <>
+            Task <Text strong>{payload.taskTitle || 'Không rõ task'}</Text> sắp đến hạn
+            {typeof payload.daysLeft === 'number' ? ` (còn ${payload.daysLeft} ngày)` : ''}
+          </>
+        );
       default:
         return <>Thông báo hệ thống</>;
     }
@@ -197,7 +204,6 @@ export default function Header() {
 
   const notificationMenu = (
     <div className="bg-white shadow-lg rounded-md w-96 border border-gray-100">
-      {/* Header */}
       <div className="px-4 py-3 flex items-center justify-between border-b border-gray-200">
         <Text strong className="text-gray-800">Thông báo</Text>
         {notifications.length > 0 && (
@@ -211,8 +217,7 @@ export default function Header() {
         )}
       </div>
 
-      {/* Body */}
-      <div className="p-4 max-h-96 overflow-y-auto"> {/* <-- thêm p-4 ở đây */}
+      <div className="p-5 max-h-96 overflow-y-auto"> 
         {notiLoading ? (
           <div className="flex justify-center items-center py-10">
             <Spin />

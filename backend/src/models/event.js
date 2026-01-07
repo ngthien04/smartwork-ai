@@ -10,12 +10,10 @@ const EventSchema = new Schema(
     end: { type: Date, required: true, index: true },
 
     allDay: { type: Boolean, default: false },
-    color: { type: String, default: '#1677ff' }, // antd blue default
+    color: { type: String, default: '#1677ff' }, 
 
-    // “owner” của event (giống calendar cá nhân)
     owner: { type: Schema.Types.ObjectId, ref: 'user', required: true, index: true },
 
-    // (optional) share/attendees giống GG calendar (để sẵn, chưa dùng cũng ok)
     attendees: [{ type: Schema.Types.ObjectId, ref: 'user' }],
 
     isDeleted: { type: Boolean, default: false, index: true },
@@ -24,7 +22,6 @@ const EventSchema = new Schema(
   { timestamps: true }
 );
 
-// Query theo owner + time range sẽ rất nhiều -> index compound
 EventSchema.index({ owner: 1, start: 1 });
 EventSchema.index({ owner: 1, end: 1 });
 

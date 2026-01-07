@@ -1,4 +1,3 @@
-// services/teamService.ts
 import api from './api';
 
 export interface TeamMemberUserLite {

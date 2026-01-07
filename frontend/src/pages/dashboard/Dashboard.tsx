@@ -321,7 +321,6 @@ const { data: notesRes } = useQuery({
           </Card>
         </div>
 
-        {/* Upcoming Events */}
         <div>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -336,7 +335,7 @@ const { data: notesRes } = useQuery({
               ) : (
                 <div className="space-y-3">
                   {upcomingEvents.map((event) => (
-                    <div key={event.id} className="flex items-center space-x-3 p-3 border rounded-lg">
+                    <div key={event._id} className="flex items-center space-x-3 p-3 border rounded-lg">
                       <CalendarOutlined className="text-blue-500" />
                       <div>
                         <p className="font-medium">{event.title}</p>
